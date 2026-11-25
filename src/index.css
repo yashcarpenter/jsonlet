@@ -1,0 +1,187 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-sunken: var(--c-sunken);
+  --color-ink: var(--c-ink);
+  --color-muted: var(--c-muted);
+  --color-line: var(--c-line);
+  --color-accent: var(--c-accent);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-success: var(--c-success);
+  --color-error: var(--c-error);
+  --color-warn: var(--c-warn);
+  --color-tok-key: var(--t-key);
+  --color-tok-str: var(--t-str);
+  --color-tok-num: var(--t-num);
+  --color-tok-bool: var(--t-bool);
+  --color-tok-null: var(--t-null);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+:root {
+  --c-bg: #f8fafc;
+  --c-surface: #ffffff;
+  --c-sunken: #f1f5f9;
+  --c-ink: #172033;
+  --c-muted: #64748b;
+  --c-line: #e2e8f0;
+  --c-accent: #6366f1;
+  --c-accent-soft: #eef2ff;
+  --c-success: #16a34a;
+  --c-error: #dc2626;
+  --c-warn: #d97706;
+  --t-key: #4338ca;
+  --t-str: #0f766e;
+  --t-num: #b45309;
+  --t-bool: #be185d;
+  --t-null: #94a3b8;
+  color-scheme: light;
+}
+
+.dark {
+  --c-bg: #0b1020;
+  --c-surface: #111827;
+  --c-sunken: #172033;
+  --c-ink: #e5e9f2;
+  --c-muted: #94a3b8;
+  --c-line: #232d42;
+  --c-accent: #818cf8;
+  --c-accent-soft: #1e2347;
+  --c-success: #4ade80;
+  --c-error: #f87171;
+  --c-warn: #fbbf24;
+  --t-key: #a5b4fc;
+  --t-str: #5eead4;
+  --t-num: #fbbf24;
+  --t-bool: #f472b6;
+  --t-null: #64748b;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+* {
+  border-color: var(--c-line);
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--c-accent) 25%, transparent);
+}
+
+/* Slim scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--c-muted) 45%, transparent) transparent;
+}
+
+mark.hl {
+  background: color-mix(in srgb, #facc15 55%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes slide-in-right {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.anim-pop {
+  animation: pop-in 0.12s ease-out;
+}
+.anim-fade {
+  animation: fade-in 0.15s ease-out;
+}
+.anim-right {
+  animation: slide-in-right 0.18s ease-out;
+}
+.anim-left {
+  animation: slide-in-left 0.18s ease-out;
+}
+
+/* CodeMirror tuning */
+.cm-editor {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: transparent !important;
+}
+.cm-editor.cm-focused {
+  outline: none !important;
+}
+.cm-gutters {
+  background: transparent !important;
+  border-right: 1px solid var(--c-line) !important;
+  color: var(--c-muted) !important;
+}
+.cm-scroller {
+  font-family: var(--font-mono) !important;
+  line-height: 1.6;
+}
+.cm-activeLine,
+.cm-activeLineGutter {
+  background: color-mix(in srgb, var(--c-accent) 6%, transparent) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

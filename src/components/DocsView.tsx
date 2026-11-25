@@ -31,8 +31,21 @@ export function DocsView() {
           <p>Global search scans visible columns only and highlights matches. Column filters adapt to the column type: text, number, date or boolean. Filters on different columns combine. Click a header to sort, and hold Shift to sort by more than one column.</p>
         </Section>
 
+        <Section title="JSONPath queries">
+          <p>The query bar above the table runs a JSONPath expression against the whole document and shows the result as a table. Press <Kbd>/</Kbd> to focus it. Examples: <Code>$.users[*].name</Code>, <Code>$..city</Code>, <Code>$.users[0:5]</Code>, <Code>$.users[?(@.age &gt; 30 &amp;&amp; @.role == 'admin')]</Code>.</p>
+          <p>Filters support <Code>==</Code> <Code>!=</Code> <Code>&lt;</Code> <Code>&lt;=</Code> <Code>&gt;</Code> <Code>&gt;=</Code> <Code>=~ /regex/i</Code>, <Code>&amp;&amp;</Code>, <Code>||</Code>, <Code>!</Code> and <Code>.length</Code>. Use Clear query to return to the default table.</p>
+        </Section>
+
+        <Section title="Cell shortcuts and statistics">
+          <p>Right-click any cell for a menu with copy, filter by this value and exclude this value. Alt+click a cell to filter by it instantly. Open a column's filter menu and switch to Stats to see min, max, mean, median, a distribution and the most common values. Click a common value to filter by it.</p>
+        </Section>
+
+        <Section title="Comparing documents">
+          <p>The Compare tab diffs two JSON documents and lists every added, removed and changed value by path. Arrays are compared by position unless you give a key such as <Code>id</Code>, in which case items are matched by that key.</p>
+        </Section>
+
         <Section title="Exporting">
-          <p>Export uses the current filtered and sorted rows, or only the selected rows. CSV contains the visible columns, and nested values are written as JSON text. JSON export writes the original, unflattened records.</p>
+          <p>Export uses the current filtered and sorted rows, or only the selected rows. CSV contains the visible columns, and nested values are written as JSON text. JSON export writes the original, unflattened records. You can also copy the filtered rows as a Markdown table, or infer TypeScript interfaces from the data.</p>
         </Section>
 
         <Section title="Privacy">

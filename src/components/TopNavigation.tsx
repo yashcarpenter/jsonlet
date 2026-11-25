@@ -1,8 +1,8 @@
-import { Braces, Keyboard, Info, Moon, Sun, Trash2, FileCode2, Table2, BookOpen } from 'lucide-react'
+import { Braces, Keyboard, Info, Moon, Sun, Trash2, FileCode2, Table2, BookOpen, GitCompare } from 'lucide-react'
 import { Button, IconButton } from './ui'
 import { cn } from '../lib/util'
 
-export type ViewId = 'editor' | 'table' | 'docs'
+export type ViewId = 'editor' | 'table' | 'diff' | 'docs'
 
 type Props = {
   view: ViewId
@@ -19,6 +19,7 @@ export function TopNavigation({ view, onView, hasData, dark, onToggleTheme, onSh
   const tabs: { id: ViewId; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
     { id: 'editor', label: 'JSON Editor', icon: <FileCode2 size={14} /> },
     { id: 'table', label: 'Table View', icon: <Table2 size={14} />, disabled: !hasData },
+    { id: 'diff', label: 'Compare', icon: <GitCompare size={14} /> },
     { id: 'docs', label: 'Documentation', icon: <BookOpen size={14} /> },
   ]
   return (

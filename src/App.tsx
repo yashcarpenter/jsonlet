@@ -4,6 +4,7 @@ import { TopNavigation, type ViewId } from './components/TopNavigation'
 import { EmptyState } from './components/EmptyState'
 import { TableView, type Doc } from './components/TableView'
 import { DocsView } from './components/DocsView'
+import { DiffView, type DiffState } from './components/DiffView'
 import { AboutModal, KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { Toaster } from './components/ui'
 import type { Validation } from './components/JsonInputEditor'
@@ -32,6 +33,7 @@ export default function App() {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [processing, setProcessing] = useState(false)
   const [validation, setValidation] = useState<Validation>({ status: 'empty', lines: 0, bytes: 0 })
+  const [diff, setDiff] = useState<DiffState>({ a: '', b: '' })
   const [modal, setModal] = useState<'shortcuts' | 'about' | null>(null)
   const apiRef = useRef<WorkspaceApi | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -146,6 +148,12 @@ export default function App() {
         if (s.view !== 'table') return
         e.preventDefault()
         apiRef.current?.copySelected()
+      } else if (e.key === '/' && !mod && s.doc) {
+        const t = e.target as HTMLElement
+        if (t.closest('input, textarea, select, .cm-editor, [contenteditable]')) return
+        e.preventDefault()
+        setView('table')
+        setTimeout(() => (document.getElementById('query-input') as HTMLInputElement | null)?.focus(), 30)
       } else if (e.key === '?' && !mod) {
         const t = e.target as HTMLElement
         if (t.closest('input, textarea, select, .cm-editor, [contenteditable]')) return
@@ -174,6 +182,8 @@ export default function App() {
       <main className="relative min-h-0 flex-1">
         {view === 'docs' ? (
           <DocsView />
+        ) : view === 'diff' ? (
+          <DiffView state={diff} onChange={setDiff} currentText={doc ? (text || JSON.stringify(doc.root, null, 2)) : null} dark={dark} />
         ) : showTable ? (
           <TableView
             key={doc.id}

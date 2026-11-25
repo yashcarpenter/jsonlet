@@ -15,6 +15,7 @@ export const OPS: Record<'text' | 'number' | 'date' | 'boolean', OpDef[]> = {
     { id: 'contains', label: 'contains', inputs: 1 },
     { id: 'notContains', label: 'does not contain', inputs: 1 },
     { id: 'equals', label: 'equals', inputs: 1 },
+    { id: 'notEquals', label: 'does not equal', inputs: 1 },
     { id: 'startsWith', label: 'starts with', inputs: 1 },
     { id: 'endsWith', label: 'ends with', inputs: 1 },
     ...empty,
@@ -107,6 +108,7 @@ export function matchesFilter(v: unknown, f: FilterValue, type: ColType): boolea
     case 'contains': return text.includes(q)
     case 'notContains': return !text.includes(q)
     case 'equals': return text === q
+    case 'notEquals': return text !== q
     case 'startsWith': return text.startsWith(q)
     case 'endsWith': return text.endsWith(q)
   }
@@ -132,4 +134,18 @@ export function compareValues(a: unknown, b: unknown): number {
   if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
   if (ra === 3) return cellText(a).localeCompare(cellText(b))
   return 0
+}
+
+/** Build a filter that matches (or excludes) a specific cell value. Returns null for objects/arrays. */
+export function filterForValue(value: unknown, type: ColType, exclude: boolean): FilterValue | null {
+  if (value === undefined || value === null || value === '') return { op: exclude ? 'notEmpty' : 'isEmpty', a: '' }
+  if (typeof value === 'object') return null
+  const fam = familyOf(type)
+  if (typeof value === 'boolean' && fam === 'boolean') return { op: value !== exclude ? 'true' : 'false', a: '' }
+  if (typeof value === 'number' && fam === 'number') return { op: exclude ? 'neq' : 'eq', a: String(value) }
+  if (typeof value === 'string' && fam === 'date') {
+    const day = value.slice(0, 10)
+    return exclude ? null : { op: 'on', a: day }
+  }
+  return { op: exclude ? 'notEquals' : 'equals', a: String(value) }
 }

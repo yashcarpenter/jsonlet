@@ -4,10 +4,13 @@ import { ArrowDown, ArrowUp, Braces, Brackets, Calendar, Expand, Filter, Hash, S
 import { Popover } from './ui'
 import { ColumnFilter } from './ColumnFilter'
 import { cn, splitMatches } from '../lib/util'
-import { isFilterReady, type FilterValue } from '../lib/filters'
+import { filterForValue, isFilterReady, type FilterValue } from '../lib/filters'
 import type { Col, ColType, Row } from '../lib/json'
 
 export type OpenCell = (rect: DOMRect, value: unknown, colKey: string, rowIndex: number) => void
+export type CellMenu = (x: number, y: number, value: unknown, colKey: string, rowIndex: number) => void
+export type Density = 'compact' | 'comfortable' | 'spacious'
+export const DENSITY_H: Record<Density, string> = { compact: 'h-6', comfortable: 'h-8', spacious: 'h-11' }
 
 const TYPE_ICON: Record<ColType, React.ReactNode> = {
   string: <Type size={12} />,
@@ -125,7 +128,19 @@ function HeaderCell({ h, filter, col }: { h: Header<Row, unknown>; filter: Filte
               </button>
             )}
           >
-            {(close) => <ColumnFilter col={col} value={filter} onChange={(v) => c.setFilterValue(v)} onClose={close} />}
+            {(close) => (
+              <ColumnFilter
+                col={col}
+                value={filter}
+                onChange={(v) => c.setFilterValue(v)}
+                onClose={close}
+                getValues={() => h.getContext().table.getPrePaginationRowModel().rows.map((r) => r.getValue(c.id))}
+                onPickValue={(v) => {
+                  const f = filterForValue(v, col.type, false)
+                  if (f) c.setFilterValue(f)
+                }}
+              />
+            )}
           </Popover>
         )}
       </div>
@@ -150,9 +165,12 @@ type Props = {
   inspectedId: number | null
   onInspect: (id: number) => void
   onOpenCell: OpenCell
+  onCellMenu: CellMenu
+  onCellAlt: (value: unknown, colKey: string) => void
+  density: Density
 }
 
-export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCell }: Props) {
+export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCell, onCellMenu, onCellAlt, density }: Props) {
   const q = query.trim()
   const filters = table.getState().columnFilters
   const filterFor = (id: string) => filters.find((f) => f.id === id)?.value as FilterValue | undefined
@@ -225,8 +243,28 @@ export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCe
                     <td
                       key={cell.id}
                       style={{ width: cell.column.getSize(), left: isSel ? 0 : isIdx ? 36 : undefined }}
+                      onContextMenu={
+                        isSel || isIdx
+                          ? undefined
+                          : (e) => {
+                              e.preventDefault()
+                              onCellMenu(e.clientX, e.clientY, cell.getValue(), id, row.original.i)
+                            }
+                      }
+                      onClickCapture={
+                        isSel || isIdx
+                          ? undefined
+                          : (e) => {
+                              if (e.altKey) {
+                                e.stopPropagation()
+                                e.preventDefault()
+                                onCellAlt(cell.getValue(), id)
+                              }
+                            }
+                      }
                       className={cn(
-                        'h-8 overflow-hidden border-r border-b border-line px-2 whitespace-nowrap group-hover/row:bg-sunken',
+                        DENSITY_H[density],
+                        'overflow-hidden border-r border-b border-line px-2 whitespace-nowrap group-hover/row:bg-sunken',
                         bg,
                         (isSel || isIdx) && 'sticky z-10',
                         isSel && 'px-0',

@@ -7,13 +7,14 @@ import { TableWorkspace, type WorkspaceApi } from './TableWorkspace'
 import { RowInspector } from './RowInspector'
 import { JsonTreeView, type ExpandSignal } from './JsonTreeView'
 import { ErrorState } from './ErrorState'
+import { QueryBar, type QuerySample } from './QueryBar'
 import { Button, IconButton } from './ui'
 import { JsonInputEditor, type Validation } from './JsonInputEditor'
-import { buildTable, findBestArrayPath, getAtPath, pathLabel, resolvePath, type SchemaNode } from '../lib/json'
+import { buildTable, findBestArrayPath, getAtPath, isPlainObject, pathLabel, resolvePath, type SchemaNode } from '../lib/json'
 import { cn, copyText, download, MOD } from '../lib/util'
 
 export type Doc = { id: number; root: unknown; source: string; processedAt: number; schema: SchemaNode; structure: string }
-type Dataset = { label: string; data: unknown }
+type Dataset = { label: string; data: unknown; query?: boolean }
 
 type Props = {
   doc: Doc
@@ -77,6 +78,15 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
   const [wsKey, setWsKey] = useState(0)
   const [signal, setSignal] = useState<ExpandSignal>({ n: 0, mode: null })
 
+  const sample = useMemo<QuerySample>(() => {
+    const p = findBestArrayPath(doc.root) ?? []
+    const arr = getAtPath(doc.root, p)
+    const first = Array.isArray(arr) && isPlainObject(arr[0]) ? arr[0] : null
+    const keys = first ? Object.keys(first) : []
+    const numKey = first ? keys.find((k) => typeof first[k] === 'number') : undefined
+    return { base: p.length ? '$.' + p.join('.') : '$', arrayRoot: Array.isArray(arr), key: keys[0] ?? 'id', numKey, numVal: numKey && first ? (first[numKey] as number) : undefined }
+  }, [doc])
+
   const current = stack[stack.length - 1]
   const model = useMemo(() => buildTable(current.data, flatten), [current, flatten])
   const fileBase = doc.source.replace(/\.json$/i, '') || 'data'
@@ -121,7 +131,10 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
     body = <ErrorState title="Nothing at this path" message="The selected path does not exist in the JSON." />
   } else if (isEmptyArray) {
     body = (
-      <ErrorState title="This array is empty" message="There are no records to show as a table. You can still look at it in tree view or pick another node from the structure sidebar.">
+      <ErrorState
+        title={current.query ? 'The query matched nothing' : 'This array is empty'}
+        message={current.query ? 'No values matched this JSONPath expression. Check the path, or press the lightbulb for examples that fit this document.' : 'There are no records to show as a table. You can still look at it in tree view or pick another node from the structure sidebar.'}
+      >
         <Button onClick={() => setMode('tree')}>
           <ListTree size={14} /> Show tree
         </Button>
@@ -255,6 +268,16 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
           onCopy={() => copyText(JSON.stringify(doc.root, null, 2), 'Full JSON copied')}
           onDownload={() => download(`${fileBase}.json`, JSON.stringify(doc.root, null, 2), 'application/json')}
           onReset={reset}
+        />
+        <QueryBar
+          root={doc.root}
+          sample={sample}
+          active={!!stack[0].query}
+          onRun={(expr, data) => go([{ label: expr, data, query: true }], '')}
+          onClear={() => {
+            const i = initial(doc.root)
+            go(i.stack, i.key)
+          }}
         />
         {body}
       </div>

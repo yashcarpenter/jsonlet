@@ -12,12 +12,13 @@ import {
   type SortingState,
   type VisibilityState,
 } from '@tanstack/react-table'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Copy, SearchX, Table2 } from 'lucide-react'
-import { DataTable, type OpenCell } from './DataTable'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Copy, Filter as FilterIcon, FilterX, PanelRight, SearchX, Table2 } from 'lucide-react'
+import { DataTable, type CellMenu, type Density, type OpenCell } from './DataTable'
 import { TableToolbar } from './TableToolbar'
 import { Button, FloatingPanel, IconButton } from './ui'
 import { JsonTreeView } from './JsonTreeView'
-import { compareValues, isFilterReady, matchesFilter, type FilterValue } from '../lib/filters'
+import { compareValues, filterForValue, isFilterReady, matchesFilter, type FilterValue } from '../lib/filters'
+import { toMarkdown, toTypeScript } from '../lib/convert'
 import { cellText, isPlainObject, type Col, type Row, type TableModel } from '../lib/json'
 import { copyText, download, toCsv, toast } from '../lib/util'
 
@@ -46,6 +47,20 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 })
   const [cell, setCell] = useState<{ rect: DOMRect; value: unknown; colKey: string; row: number } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; value: unknown; colKey: string; row: number } | null>(null)
+  const [density, setDensity] = useState<Density>(() => {
+    const v = localStorage.getItem('jx-density')
+    return v === 'compact' || v === 'spacious' ? v : 'comfortable'
+  })
+  const cycleDensity = () => {
+    const next: Density = density === 'comfortable' ? 'compact' : density === 'compact' ? 'spacious' : 'comfortable'
+    setDensity(next)
+    try {
+      localStorage.setItem('jx-density', next)
+    } catch {
+      /* ignore */
+    }
+  }
 
   const colMap = useMemo(() => new Map(model.cols.map((c) => [c.key, c])), [model])
 
@@ -126,6 +141,20 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
     copyText(jsonOf(rows, minify), `Copied ${rows.length.toLocaleString()} records`)
   }
 
+  const setFilter = (key: string, v: FilterValue | undefined) => setColumnFilters((fs) => [...fs.filter((f) => f.id !== key), ...(v ? [{ id: key, value: v }] : [])])
+  const filterByValue = (value: unknown, colKey: string, exclude: boolean) => {
+    const col = colMap.get(colKey)
+    const f = col ? filterForValue(value, col.type, exclude) : null
+    if (!f) return toast(exclude ? 'Cannot exclude this kind of value' : 'Objects and arrays cannot be used as a filter', 'info')
+    setFilter(colKey, f)
+    toast(`${exclude ? 'Excluding' : 'Filtering'} ${colKey}`, 'info')
+  }
+  const doMarkdown = () => {
+    const rows = exportRows(false)
+    copyText(toMarkdown(keysForExport(), rows.map((r) => r.flat)), `Copied Markdown table (${Math.min(rows.length, 1000).toLocaleString()} rows)`)
+  }
+  const doTs = () => copyText(toTypeScript(model.rows.map((r) => r.orig)), 'TypeScript interfaces copied')
+
   useEffect(() => {
     apiRef.current = {
       copySelected: () => {
@@ -144,6 +173,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
     setColumnFilters([])
   }
 
+  const onCellMenu: CellMenu = (x, y, value, colKey, row) => setMenu({ x, y, value, colKey, row })
   const onOpenCell: OpenCell = (rect, value, colKey, row) => setCell({ rect, value, colKey, row })
 
   const page = pagination.pageIndex
@@ -161,7 +191,9 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
         matches={dq === query ? searched.length : null}
         cols={model.cols}
         filters={filterMap}
-        onSetFilter={(k, v) => setColumnFilters((fs) => [...fs.filter((f) => f.id !== k), ...(v ? [{ id: k, value: v }] : [])])}
+        onSetFilter={setFilter}
+        density={density}
+        onCycleDensity={cycleDensity}
         sorts={sorting}
         onRemoveSort={(id) => setSorting((s) => s.filter((x) => x.id !== id))}
         onClearSorts={() => setSorting([])}
@@ -179,7 +211,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
           flatten,
           onFlatten,
         }}
-        exportMenu={{ filteredCount, selectedCount: selectedIds.length, onCsv: doCsv, onJson: doJson, onCopy: doCopy }}
+        exportMenu={{ filteredCount, selectedCount: selectedIds.length, onCsv: doCsv, onJson: doJson, onCopy: doCopy, onMarkdown: doMarkdown, onTypeScript: doTs }}
       />
 
       {model.notes.length > 0 && (
@@ -205,7 +237,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
           <Button onClick={clearFilters}>Clear filters</Button>
         </div>
       ) : (
-        <DataTable table={table} cols={colMap} query={dq} inspectedId={inspectedId} onInspect={(id) => onInspect(inspectedId === id ? null : id)} onOpenCell={onOpenCell} />
+        <DataTable table={table} cols={colMap} query={dq} inspectedId={inspectedId} onInspect={(id) => onInspect(inspectedId === id ? null : id)} onOpenCell={onOpenCell} onCellMenu={onCellMenu} onCellAlt={(v, k) => filterByValue(v, k, false)} density={density} />
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-surface px-3 py-1.5 text-[12px] text-muted sm:px-4">
@@ -260,6 +292,48 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
       <span className="sr-only" aria-live="polite">
         {activeFilterCount} active filters, {filteredCount} rows
       </span>
+
+      {menu && (
+        <FloatingPanel rect={new DOMRect(menu.x, menu.y - 6, 1, 1)} onClose={() => setMenu(null)} width={236}>
+          {(() => {
+            const m = menu
+            const col = colMap.get(m.colKey)
+            const canFilter = !!col && filterForValue(m.value, col.type, false) !== null
+            const canExclude = !!col && filterForValue(m.value, col.type, true) !== null
+            const isNested = Array.isArray(m.value) || isPlainObject(m.value)
+            const Item = ({ icon, label, onClick, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean }) => (
+              <button
+                disabled={disabled}
+                onClick={() => {
+                  setMenu(null)
+                  onClick()
+                }}
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left hover:bg-sunken disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                <span className="text-muted">{icon}</span>
+                {label}
+              </button>
+            )
+            const rowObj = model.rows[m.row]
+            return (
+              <div className="p-1">
+                <div className="truncate px-2.5 pt-1 pb-1.5 font-mono text-[11px] text-muted">
+                  {m.colKey} · row {m.row + 1}
+                </div>
+                <Item icon={<Copy size={13} />} label="Copy cell value" onClick={() => copyText(m.value === undefined ? '' : typeof m.value === 'string' ? m.value : JSON.stringify(m.value, null, 2), 'Cell copied')} />
+                <Item icon={<Copy size={13} />} label="Copy row as JSON" onClick={() => copyText(JSON.stringify(rowObj?.orig, null, 2), 'Row copied')} />
+                <div className="my-1 h-px bg-line" />
+                <Item icon={<FilterIcon size={13} />} label="Filter by this value" disabled={!canFilter} onClick={() => filterByValue(m.value, m.colKey, false)} />
+                <Item icon={<FilterX size={13} />} label="Exclude this value" disabled={!canExclude} onClick={() => filterByValue(m.value, m.colKey, true)} />
+                <div className="my-1 h-px bg-line" />
+                <Item icon={<PanelRight size={13} />} label="Open in inspector" onClick={() => onInspect(m.row)} />
+                {isNested && <Item icon={<Table2 size={13} />} label="Open as table" onClick={() => onOpenNested(`${datasetLabel}[${m.row}].${m.colKey}`, m.value)} />}
+                <div className="px-2.5 pt-1.5 pb-1 text-[10.5px] text-muted">Tip: Alt+click a cell to filter by it.</div>
+              </div>
+            )
+          })()}
+        </FloatingPanel>
+      )}
 
       {cell && (
         <FloatingPanel rect={cell.rect} onClose={() => setCell(null)} width={380}>

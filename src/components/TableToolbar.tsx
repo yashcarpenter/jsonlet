@@ -1,6 +1,8 @@
 import { useState, type ComponentProps } from 'react'
 import { ArrowDown, ArrowUp, FilterX, ListFilter, X } from 'lucide-react'
-import { Button, Popover } from './ui'
+import { Button, IconButton, Popover } from './ui'
+import { Rows3 } from 'lucide-react'
+import type { Density } from './DataTable'
 import { GlobalSearch } from './GlobalSearch'
 import { ColumnManager } from './ColumnManager'
 import { ColumnFilter } from './ColumnFilter'
@@ -19,6 +21,8 @@ type Props = {
   onRemoveSort: (id: string) => void
   onClearSorts: () => void
   onClearFilters: () => void
+  density: Density
+  onCycleDensity: () => void
   columnManager: ComponentProps<typeof ColumnManager>
   exportMenu: ComponentProps<typeof ExportMenu>
 }
@@ -102,7 +106,10 @@ export function TableToolbar(p: Props) {
             <FilterX size={13} /> Clear filters <span className="text-muted">({total})</span>
           </Button>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <IconButton label={`Row density: ${p.density} (click to change)`} onClick={p.onCycleDensity}>
+            <Rows3 size={15} />
+          </IconButton>
           <ExportMenu {...p.exportMenu} />
         </div>
       </div>

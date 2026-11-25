@@ -3,10 +3,11 @@ import CodeMirror from '@uiw/react-codemirror'
 import { json } from '@codemirror/lang-json'
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint'
 import { EditorView } from '@codemirror/view'
-import { ClipboardPaste, Maximize2, Minimize2, Eraser, WandSparkles, Minimize, CheckCircle2, AlertCircle, FileJson } from 'lucide-react'
+import { Wrench, ClipboardPaste, Maximize2, Minimize2, Eraser, WandSparkles, Minimize, CheckCircle2, AlertCircle, FileJson } from 'lucide-react'
 import { Button, IconButton, Popover } from './ui'
 import { findJsonError, type JsonError } from '../lib/json'
 import { SAMPLES } from '../lib/samples'
+import { repairJson } from '../lib/repair'
 import { cn, copyText, formatBytes, toast } from '../lib/util'
 
 export type Validation = { status: 'empty' | 'valid' | 'invalid'; error?: JsonError; lines: number; bytes: number }
@@ -61,6 +62,14 @@ export function JsonInputEditor({ value, onChange, validation, dark, expanded, o
     }
   }
 
+  const repair = () => {
+    const r = repairJson(value)
+    if (r.valid) {
+      onChange(JSON.stringify(JSON.parse(r.text), null, 2))
+      toast('JSON repaired and formatted')
+    } else toast('Could not repair automatically. Check the error marker for the remaining problem.', 'err')
+  }
+
   return (
     <div className={cn('overflow-hidden bg-surface', fill ? 'flex h-full flex-col' : 'rounded-xl border border-line shadow-sm focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15')}>
       <div className="flex flex-wrap items-center gap-1 border-b border-line bg-sunken/60 px-2 py-1.5">
@@ -76,6 +85,11 @@ export function JsonInputEditor({ value, onChange, validation, dark, expanded, o
         <Button size="sm" variant="ghost" onClick={() => format(undefined)} disabled={validation.status !== 'valid'} title="Minify JSON">
           <Minimize size={13} /> <span className="hidden sm:inline">Minify</span>
         </Button>
+        {validation.status === 'invalid' && (
+          <Button size="sm" variant="ghost" onClick={repair} title="Fix comments, single quotes, unquoted keys, trailing commas and Python literals" className="text-warn">
+            <Wrench size={13} /> Repair
+          </Button>
+        )}
         <Button size="sm" variant="ghost" onClick={() => copyText(value, 'JSON copied')} disabled={!value}>
           Copy
         </Button>

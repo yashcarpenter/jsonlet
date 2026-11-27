@@ -1,13 +1,15 @@
-import { memo } from 'react'
+import { Fragment } from 'react'
 import { flexRender, type Header, type Table } from '@tanstack/react-table'
-import { ArrowDown, ArrowUp, Braces, Brackets, Calendar, Expand, Filter, Hash, Shuffle, ToggleLeft, Type } from 'lucide-react'
+import { ArrowDown, ArrowUp, Braces, Brackets, Calendar, ChevronRight, ChevronsUpDown, Filter, Hash, Shuffle, ToggleLeft, Type } from 'lucide-react'
+import { Cell, type OpenCell } from './Cells'
+import { Anchored, NestedSection } from './NestedData'
 import { Popover } from './ui'
 import { ColumnFilter } from './ColumnFilter'
-import { cn, splitMatches } from '../lib/util'
+import { cn } from '../lib/util'
 import { filterForValue, isFilterReady, type FilterValue } from '../lib/filters'
 import type { Col, ColType, Row } from '../lib/json'
 
-export type OpenCell = (rect: DOMRect, value: unknown, colKey: string, rowIndex: number) => void
+export type { OpenCell }
 export type CellMenu = (x: number, y: number, value: unknown, colKey: string, rowIndex: number) => void
 export type Density = 'compact' | 'comfortable' | 'spacious'
 export const DENSITY_H: Record<Density, string> = { compact: 'h-6', comfortable: 'h-8', spacious: 'h-11' }
@@ -21,78 +23,6 @@ const TYPE_ICON: Record<ColType, React.ReactNode> = {
   array: <Brackets size={12} />,
   mixed: <Shuffle size={12} />,
 }
-
-function Hl({ text, q }: { text: string; q: string }) {
-  if (!q) return <>{text}</>
-  return (
-    <>
-      {splitMatches(text, q).map((p, i) => (p.hit ? <mark key={i} className="hl">{p.t}</mark> : <span key={i}>{p.t}</span>))}
-    </>
-  )
-}
-
-const summarize = (v: unknown): string => {
-  if (Array.isArray(v)) {
-    if (v.length === 0) return 'empty'
-    if (v.every((x) => x === null || typeof x !== 'object')) return v.slice(0, 4).map(String).join(', ') + (v.length > 4 ? '…' : '')
-    return `${v.length} ${v.length === 1 ? 'item' : 'items'}`
-  }
-  const keys = Object.keys(v as object)
-  return keys.length ? keys.slice(0, 3).join(', ') + (keys.length > 3 ? '…' : '') : 'empty'
-}
-
-const Cell = memo(function Cell({ value, q, onOpen, colKey, rowIndex }: { value: unknown; q: string; onOpen: OpenCell; colKey: string; rowIndex: number }) {
-  if (value === undefined) return <span className="text-muted/50" title="Property missing in this record">—</span>
-  if (value === null) return <span className="text-tok-null italic">null</span>
-  if (typeof value === 'boolean')
-    return (
-      <span className={cn('inline-flex items-center gap-1.5 rounded-full px-1.5 py-px text-[11.5px] font-medium', value ? 'bg-success/10 text-success' : 'bg-sunken text-muted')}>
-        <span className={cn('h-1.5 w-1.5 rounded-full', value ? 'bg-success' : 'bg-muted/60')} />
-        {String(value)}
-      </span>
-    )
-  if (typeof value === 'number') return <span className="font-mono text-tok-num tabular-nums"><Hl text={String(value)} q={q} /></span>
-  if (typeof value === 'string') {
-    if (value === '') return <span className="text-muted/60 italic">empty</span>
-    const long = value.length > 48
-    return (
-      <span className="flex items-center gap-1">
-        <span className="truncate" title={long ? undefined : value}>
-          <Hl text={long && !q ? value.slice(0, 200) : value.length > 400 ? value.slice(0, 400) : value} q={q} />
-        </span>
-        {long && (
-          <button
-            aria-label="Inspect full value"
-            title="Inspect full value"
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpen(e.currentTarget.getBoundingClientRect(), value, colKey, rowIndex)
-            }}
-            className="shrink-0 rounded p-0.5 text-muted hover:bg-sunken hover:text-ink"
-          >
-            <Expand size={11} />
-          </button>
-        )}
-      </span>
-    )
-  }
-  const isArr = Array.isArray(value)
-  const n = isArr ? (value as unknown[]).length : Object.keys(value as object).length
-  return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation()
-        onOpen(e.currentTarget.getBoundingClientRect(), value, colKey, rowIndex)
-      }}
-      title={isArr ? `Array with ${n} item(s). Click to expand.` : `Object with ${n} key(s). Click to expand.`}
-      className="flex max-w-full items-center gap-1 rounded border border-line bg-sunken/70 px-1.5 py-px text-[11.5px] hover:border-accent/50 hover:bg-accent-soft"
-    >
-      {isArr ? <Brackets size={11} className="shrink-0 text-tok-key" /> : <Braces size={11} className="shrink-0 text-tok-key" />}
-      <span className="font-mono font-medium text-tok-key">{n}</span>
-      <span className="truncate text-muted">{summarize(value)}</span>
-    </button>
-  )
-})
 
 function HeaderCell({ h, filter, col }: { h: Header<Row, unknown>; filter: FilterValue | undefined; col: Col | undefined }) {
   const c = h.column
@@ -168,9 +98,16 @@ type Props = {
   onCellMenu: CellMenu
   onCellAlt: (value: unknown, colKey: string) => void
   density: Density
+  expanded: Set<string>
+  nestedKeys: (row: Row) => string[]
+  onToggleCell: (rowIndex: number, colKey: string) => void
+  onToggleRow: (rowIndex: number) => void
+  onToggleAll: () => void
+  onOpenTable: (label: string, value: unknown) => void
+  rowLabel: (rowIndex: number) => string
 }
 
-export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCell, onCellMenu, onCellAlt, density }: Props) {
+export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCell, onCellMenu, onCellAlt, density, expanded, nestedKeys, onToggleCell, onToggleRow, onToggleAll, onOpenTable, rowLabel }: Props) {
   const q = query.trim()
   const filters = table.getState().columnFilters
   const filterFor = (id: string) => filters.find((f) => f.id === id)?.value as FilterValue | undefined
@@ -210,7 +147,10 @@ export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCe
                         />
                       </div>
                     ) : isIdx ? (
-                      <div className="px-2 text-center font-mono text-[11px] text-muted">#</div>
+                      <button onClick={onToggleAll} title="Expand or collapse all nested data on this page" aria-label="Expand or collapse all nested data on this page" className="flex h-full w-full items-center justify-center gap-0.5 text-muted hover:text-ink">
+                        <ChevronsUpDown size={12} />
+                        <span className="font-mono text-[11px]">#</span>
+                      </button>
                     ) : (
                       <HeaderCell h={h} filter={filterFor(h.column.id)} col={cols.get(h.column.id)} />
                     )}
@@ -225,9 +165,12 @@ export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCe
             const inspected = inspectedId === row.original.i
             const selected = row.getIsSelected()
             const bg = inspected ? 'bg-accent-soft' : selected ? 'bg-accent-soft/50' : 'bg-surface'
+            const ri = row.original.i
+            const nKeys = nestedKeys(row.original)
+            const openKeys = nKeys.filter((k) => expanded.has(`${ri}::${k}`))
             return (
+              <Fragment key={row.id}>
               <tr
-                key={row.id}
                 tabIndex={0}
                 aria-selected={inspected}
                 onClick={() => onInspect(row.original.i)}
@@ -242,6 +185,7 @@ export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCe
                   return (
                     <td
                       key={cell.id}
+                      data-col={id}
                       style={{ width: cell.column.getSize(), left: isSel ? 0 : isIdx ? 36 : undefined }}
                       onContextMenu={
                         isSel || isIdx
@@ -276,14 +220,61 @@ export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCe
                           <input type="checkbox" aria-label={`Select row ${row.original.i + 1}`} className="accent-[var(--c-accent)]" checked={selected} onChange={row.getToggleSelectedHandler()} />
                         </div>
                       ) : isIdx ? (
-                        <span className="block text-center font-mono text-[11px] text-muted">{row.original.i + 1}</span>
+                        <span className="flex items-center justify-center gap-0.5">
+                          {nKeys.length > 0 ? (
+                            <button
+                              aria-label={openKeys.length ? `Collapse nested data of row ${ri + 1}` : `Expand nested data of row ${ri + 1}`}
+                              aria-expanded={openKeys.length > 0}
+                              title={openKeys.length ? 'Collapse nested data' : 'Expand nested data'}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onToggleRow(ri)
+                              }}
+                              className="rounded p-0.5 text-muted hover:bg-line hover:text-ink"
+                            >
+                              <ChevronRight size={13} className={cn('transition-transform', openKeys.length > 0 && 'rotate-90 text-accent')} />
+                            </button>
+                          ) : (
+                            <span className="w-[18px]" />
+                          )}
+                          <span className="font-mono text-[11px] text-muted">{ri + 1}</span>
+                        </span>
                       ) : (
-                        <Cell value={cell.getValue()} q={q} onOpen={onOpenCell} colKey={id} rowIndex={row.original.i} />
+                        <Cell
+                          value={cell.getValue()}
+                          q={q}
+                          onOpen={onOpenCell}
+                          colKey={id}
+                          rowIndex={ri}
+                          expanded={expanded.has(`${ri}::${id}`)}
+                          onToggle={typeof cell.getValue() === 'object' && cell.getValue() !== null ? () => onToggleCell(ri, id) : undefined}
+                        />
                       )}
                     </td>
                   )
                 })}
               </tr>
+              {openKeys.length > 0 && (
+                <tr>
+                  <td colSpan={row.getVisibleCells().length} className="border-b border-line bg-sunken/30 p-0">
+                    <div className="space-y-3 py-3">
+                      {openKeys.map((k) => (
+                        <Anchored key={k} colKey={k}>
+                          <NestedSection
+                            title={k}
+                            value={row.original.flat[k]}
+                            label={`${rowLabel(ri)}.${k}`}
+                            onClose={() => onToggleCell(ri, k)}
+                            onOpenCell={onOpenCell}
+                            onOpenTable={onOpenTable}
+                          />
+                        </Anchored>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             )
           })}
         </tbody>

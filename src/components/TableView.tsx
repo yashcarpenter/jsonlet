@@ -10,8 +10,9 @@ import { ErrorState } from './ErrorState'
 import { QueryBar, type QuerySample } from './QueryBar'
 import { Button, IconButton } from './ui'
 import { JsonInputEditor, type Validation } from './JsonInputEditor'
-import { buildTable, findBestArrayPath, getAtPath, isPlainObject, pathLabel, resolvePath, type SchemaNode } from '../lib/json'
-import { cn, copyText, download, MOD } from '../lib/util'
+import { buildTable, findBestArrayPath, getAtPath, isPlainObject, pathLabel, resolvePath, rowRef, type SchemaNode } from '../lib/json'
+import { toast, cn, copyText, download, lsGet, lsSet, MOD, safeName } from '../lib/util'
+import { newTabRequested, openInNewTab } from '../lib/handoff'
 
 export type Doc = { id: number; root: unknown; source: string; processedAt: number; schema: SchemaNode; structure: string }
 type Dataset = { label: string; data: unknown; query?: boolean }
@@ -39,7 +40,7 @@ const initial = (root: unknown): { stack: Dataset[]; key: string } => {
 export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, validation, dark, dirty, processing, onProcess, onLoadSample }: Props) {
   const [tab, setTab] = useState<'editor' | 'structure'>('editor')
   const [panelW, setPanelW] = useState(() => {
-    const v = Number(localStorage.getItem('jx-editor-w'))
+    const v = Number(lsGet('jx-editor-w'))
     return v >= 320 ? v : 480
   })
   const clampW = (w: number) => Math.round(Math.max(320, Math.min(w, 1000, window.innerWidth - 420)))
@@ -61,11 +62,7 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
       el.removeEventListener('pointerup', up)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
-      try {
-        localStorage.setItem('jx-editor-w', String(w))
-      } catch {
-        /* ignore */
-      }
+      lsSet('jx-editor-w', String(w))
     }
     el.addEventListener('pointermove', move)
     el.addEventListener('pointerup', up)
@@ -89,7 +86,7 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
 
   const current = stack[stack.length - 1]
   const model = useMemo(() => buildTable(current.data, flatten), [current, flatten])
-  const fileBase = doc.source.replace(/\.json$/i, '') || 'data'
+  const fileBase = safeName(doc.source.replace(/\.json$/i, ''))
   const row = inspectedId !== null ? model.rows[inspectedId] : undefined
 
   const go = (next: Dataset[], key?: string) => {
@@ -97,7 +94,14 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
     setInspectedId(null)
     setWsKey((k) => k + 1)
   }
-  const openNested = (label: string, value: unknown) => go([...stack, { label, data: value }])
+  // Cmd/Ctrl+click on any "Open as table" control opens the table in a new browser tab instead.
+  const openNested = (label: string, value: unknown) => {
+    if (newTabRequested()) {
+      if (openInNewTab(label, value)) toast('Opened in a new tab', 'info')
+      return
+    }
+    go([...stack, { label, data: value }])
+  }
   const reset = () => {
     const i = initial(doc.root)
     setNav(i)
@@ -119,6 +123,7 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
 
   const crumbs = stack.map((s, i) => (i === 0 ? s.label : s.label.startsWith(stack[i - 1].label) ? s.label.slice(stack[i - 1].label.length).replace(/^\./, '') : s.label))
   const isEmptyArray = Array.isArray(current.data) && current.data.length === 0
+  const isEmptyObject = isPlainObject(current.data) && Object.keys(current.data).length === 0
 
   const selectNode = (n: SchemaNode) => {
     const data = resolvePath(doc.root, n.path)
@@ -129,6 +134,15 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
   let body
   if (current.data === undefined) {
     body = <ErrorState title="Nothing at this path" message="The selected path does not exist in the JSON." />
+  } else if (isEmptyObject) {
+    body = (
+      <ErrorState title="This object is empty" message="It has no keys, so there is nothing to show as a table. Pick another node from the structure sidebar, or edit the JSON.">
+        <Button onClick={() => setMode('tree')}>
+          <ListTree size={14} /> Show tree
+        </Button>
+        {stack.length > 1 && <Button onClick={() => go(stack.slice(0, -1))}>Go back</Button>}
+      </ErrorState>
+    )
   } else if (isEmptyArray) {
     body = (
       <ErrorState
@@ -238,7 +252,7 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
                 onPointerDown={startResize}
                 onDoubleClick={() => {
                   setPanelW(480)
-                  localStorage.setItem('jx-editor-w', '480')
+                  lsSet('jx-editor-w', '480')
                 }}
                 className="absolute inset-y-0 right-0 z-40 w-1.5 translate-x-1/2 cursor-col-resize touch-none transition-colors hover:bg-accent/50 active:bg-accent"
               />
@@ -286,7 +300,7 @@ export function TableView({ doc, apiRef, onEdit, onReplace, text, onTextChange, 
           row={row}
           position={row.i + 1}
           total={model.rows.length}
-          datasetLabel={current.label}
+          rowLabel={rowRef(current.label, model.kind, row)}
           onClose={() => setInspectedId(null)}
           onPrev={row.i > 0 ? () => setInspectedId(row.i - 1) : null}
           onNext={row.i < model.rows.length - 1 ? () => setInspectedId(row.i + 1) : null}

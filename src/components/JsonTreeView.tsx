@@ -81,7 +81,7 @@ const Node = memo(function Node({ k, v, depth, signal, defaultDepth, onOpenTable
         </div>
         <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {canTable && (
-            <button title="Open as table" aria-label="Open as table" onClick={() => onOpenTable!(path, v)} className="rounded p-1 text-muted hover:bg-line hover:text-ink">
+            <button title="Open as table (Cmd/Ctrl+click: new tab)" aria-label="Open as table" onClick={() => onOpenTable!(path, v)} className="rounded p-1 text-muted hover:bg-line hover:text-ink">
               <Table2 size={12} />
             </button>
           )}

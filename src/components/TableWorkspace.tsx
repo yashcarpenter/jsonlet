@@ -19,8 +19,9 @@ import { Button, FloatingPanel, IconButton } from './ui'
 import { JsonTreeView } from './JsonTreeView'
 import { compareValues, filterForValue, isFilterReady, matchesFilter, type FilterValue } from '../lib/filters'
 import { toMarkdown, toTypeScript } from '../lib/convert'
-import { cellText, isPlainObject, type Col, type Row, type TableModel } from '../lib/json'
-import { copyText, download, toCsv, toast } from '../lib/util'
+import { cellText, isPlainObject, rowRef, type Col, type Row, type TableModel } from '../lib/json'
+import { isNestedValue } from './Cells'
+import { copyText, download, lsGet, lsSet, toCsv, toast } from '../lib/util'
 
 export type WorkspaceApi = { copySelected: () => void }
 
@@ -43,23 +44,22 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
   const dq = useDeferredValue(query)
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  // Very wide data (hundreds of columns) would render tens of thousands of cells per page, so start with the first 150.
+  const WIDE = model.cols.length > 200
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => (WIDE ? Object.fromEntries(model.cols.slice(150).map((c) => [c.key, false])) : {}))
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 })
   const [cell, setCell] = useState<{ rect: DOMRect; value: unknown; colKey: string; row: number } | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<{ x: number; y: number; value: unknown; colKey: string; row: number } | null>(null)
   const [density, setDensity] = useState<Density>(() => {
-    const v = localStorage.getItem('jx-density')
+    const v = lsGet('jx-density')
     return v === 'compact' || v === 'spacious' ? v : 'comfortable'
   })
   const cycleDensity = () => {
     const next: Density = density === 'comfortable' ? 'compact' : density === 'compact' ? 'spacious' : 'comfortable'
     setDensity(next)
-    try {
-      localStorage.setItem('jx-density', next)
-    } catch {
-      /* ignore */
-    }
+    lsSet('jx-density', next)
   }
 
   const colMap = useMemo(() => new Map(model.cols.map((c) => [c.key, c])), [model])
@@ -75,7 +75,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
   const columns = useMemo<ColumnDef<Row>[]>(
     () => [
       { id: '__select', size: 36, enableResizing: false, enableSorting: false, enableHiding: false },
-      { id: '__row', size: 52, enableResizing: false, enableSorting: false, enableHiding: false },
+      { id: '__row', size: 64, enableResizing: false, enableSorting: false, enableHiding: false },
       ...model.cols.map(
         (c: Col): ColumnDef<Row> => ({
           id: c.key,
@@ -110,6 +110,31 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   })
+
+  const nestedKeys = (row: Row) => visibleKeys.filter((k) => isNestedValue(row.flat[k]))
+  const toggleCell = (i: number, k: string) =>
+    setExpanded((s) => {
+      const n = new Set(s)
+      const key = `${i}::${k}`
+      n.has(key) ? n.delete(key) : n.add(key)
+      return n
+    })
+  const toggleRow = (i: number) =>
+    setExpanded((s) => {
+      const n = new Set(s)
+      const keys = nestedKeys(model.rows[i]).map((k) => `${i}::${k}`)
+      const anyOpen = keys.some((k) => n.has(k))
+      keys.forEach((k) => (anyOpen ? n.delete(k) : n.add(k)))
+      return n
+    })
+  const toggleAll = () =>
+    setExpanded((s) => {
+      const n = new Set(s)
+      const keys = table.getRowModel().rows.flatMap((r) => nestedKeys(r.original).map((k) => `${r.original.i}::${k}`))
+      const allOpen = keys.length > 0 && keys.every((k) => n.has(k))
+      keys.forEach((k) => (allOpen ? n.delete(k) : n.add(k)))
+      return n
+    })
 
   const filteredRows = table.getPrePaginationRowModel().rows
   const filteredCount = filteredRows.length
@@ -176,12 +201,15 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
   const onCellMenu: CellMenu = (x, y, value, colKey, row) => setMenu({ x, y, value, colKey, row })
   const onOpenCell: OpenCell = (rect, value, colKey, row) => setCell({ rect, value, colKey, row })
 
+  const rowLabel = (i: number) => rowRef(datasetLabel, model.kind, model.rows[i])
   const page = pagination.pageIndex
   const size = pagination.pageSize
   const pageCount = Math.max(1, table.getPageCount())
   const from = filteredCount === 0 ? 0 : page * size + 1
   const to = Math.min(filteredCount, (page + 1) * size)
   const noResults = filteredCount === 0 && model.rows.length > 0
+  const allHidden = visibleKeys.length === 0 && model.cols.length > 0
+  const notes = [...(WIDE ? [`This data has ${model.cols.length.toLocaleString()} columns. To keep the table fast, only the first 150 are shown. Use Columns to show others.`] : []), ...model.notes]
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -214,22 +242,29 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
         exportMenu={{ filteredCount, selectedCount: selectedIds.length, onCsv: doCsv, onJson: doJson, onCopy: doCopy, onMarkdown: doMarkdown, onTypeScript: doTs }}
       />
 
-      {model.notes.length > 0 && (
+      {notes.length > 0 && (
         <details className="group border-b border-line bg-accent-soft/40 px-3 py-1 text-[12px] text-muted sm:px-4">
           <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-ink">
             <Table2 size={12} className="text-accent" />
-            <span>{model.notes[0]}</span>
-            {model.notes.length > 1 && <span className="rounded bg-line px-1 text-[10.5px]">+{model.notes.length - 1}</span>}
+            <span>{notes[0]}</span>
+            {notes.length > 1 && <span className="rounded bg-line px-1 text-[10.5px]">+{notes.length - 1}</span>}
           </summary>
           <ul className="mt-1 mb-1 ml-5 list-disc space-y-0.5">
-            {model.notes.slice(1).map((n) => (
+            {notes.slice(1).map((n) => (
               <li key={n}>{n}</li>
             ))}
           </ul>
         </details>
       )}
 
-      {noResults ? (
+      {allHidden ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-surface p-8 text-center">
+          <Table2 size={28} className="text-muted" />
+          <h3 className="text-[14px] font-semibold">All columns are hidden</h3>
+          <p className="max-w-sm text-muted">Show at least one column to see the data.</p>
+          <Button onClick={() => setColumnVisibility({})}>Show all columns</Button>
+        </div>
+      ) : noResults ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-surface p-8 text-center">
           <SearchX size={28} className="text-muted" />
           <h3 className="text-[14px] font-semibold">No records match</h3>
@@ -237,7 +272,16 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
           <Button onClick={clearFilters}>Clear filters</Button>
         </div>
       ) : (
-        <DataTable table={table} cols={colMap} query={dq} inspectedId={inspectedId} onInspect={(id) => onInspect(inspectedId === id ? null : id)} onOpenCell={onOpenCell} onCellMenu={onCellMenu} onCellAlt={(v, k) => filterByValue(v, k, false)} density={density} />
+        <DataTable table={table} cols={colMap} query={dq} inspectedId={inspectedId} onInspect={(id) => onInspect(inspectedId === id ? null : id)} onOpenCell={onOpenCell} onCellMenu={onCellMenu} onCellAlt={(v, k) => filterByValue(v, k, false)}
+          density={density}
+          expanded={expanded}
+          nestedKeys={nestedKeys}
+          onToggleCell={toggleCell}
+          onToggleRow={toggleRow}
+          onToggleAll={toggleAll}
+          onOpenTable={onOpenNested}
+          rowLabel={rowLabel}
+        />
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-surface px-3 py-1.5 text-[12px] text-muted sm:px-4">
@@ -327,7 +371,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
                 <Item icon={<FilterX size={13} />} label="Exclude this value" disabled={!canExclude} onClick={() => filterByValue(m.value, m.colKey, true)} />
                 <div className="my-1 h-px bg-line" />
                 <Item icon={<PanelRight size={13} />} label="Open in inspector" onClick={() => onInspect(m.row)} />
-                {isNested && <Item icon={<Table2 size={13} />} label="Open as table" onClick={() => onOpenNested(`${datasetLabel}[${m.row}].${m.colKey}`, m.value)} />}
+                {isNested && <Item icon={<Table2 size={13} />} label="Open as table  (⌘/Ctrl+click: new tab)" onClick={() => onOpenNested(`${rowLabel(m.row)}.${m.colKey}`, m.value)} />}
                 <div className="px-2.5 pt-1.5 pb-1 text-[10.5px] text-muted">Tip: Alt+click a cell to filter by it.</div>
               </div>
             )
@@ -347,7 +391,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
           </div>
           <div className="max-h-[50vh] overflow-auto p-2">
             {typeof cell.value === 'object' && cell.value !== null ? (
-              <JsonTreeView value={cell.value} signal={{ n: 0, mode: null }} defaultDepth={2} rootLabel={cell.colKey} onOpenTable={(l, v) => { setCell(null); onOpenNested(`${datasetLabel}[${cell.row}].${l}`, v) }} />
+              <JsonTreeView value={cell.value} signal={{ n: 0, mode: null }} defaultDepth={2} rootLabel={cell.colKey} onOpenTable={(l, v) => { setCell(null); onOpenNested(`${rowLabel(cell.row)}.${l}`, v) }} />
             ) : (
               <pre className="p-1 font-mono text-[12px] leading-relaxed break-words whitespace-pre-wrap">{String(cell.value)}</pre>
             )}
@@ -358,7 +402,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
                 size="sm"
                 variant="primary"
                 onClick={() => {
-                  onOpenNested(`${datasetLabel}[${cell.row}].${cell.colKey}`, cell.value)
+                  onOpenNested(`${rowLabel(cell.row)}.${cell.colKey}`, cell.value)
                   setCell(null)
                 }}
               >

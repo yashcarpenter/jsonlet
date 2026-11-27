@@ -13,7 +13,7 @@ type Props = {
   onPrev: (() => void) | null
   onNext: (() => void) | null
   onOpenNested: (label: string, v: unknown) => void
-  datasetLabel: string
+  rowLabel: string
 }
 
 const idHint = (orig: unknown): string | null => {
@@ -25,11 +25,12 @@ const idHint = (orig: unknown): string | null => {
   return null
 }
 
-export function RowInspector({ row, position, total, onClose, onPrev, onNext, onOpenNested, datasetLabel }: Props) {
+export function RowInspector({ row, position, total, onClose, onPrev, onNext, onOpenNested, rowLabel }: Props) {
   const [mode, setMode] = useState<'tree' | 'json'>('tree')
   const [signal, setSignal] = useState<ExpandSignal>({ n: 0, mode: null })
   const hint = idHint(row.orig)
-  const text = JSON.stringify(row.orig, null, 2)
+  const text = JSON.stringify(row.orig, null, 2) ?? ''
+  const tooBig = text.length > 300_000
 
   return (
     <>
@@ -70,10 +71,17 @@ export function RowInspector({ row, position, total, onClose, onPrev, onNext, on
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-2">
           {mode === 'tree' ? (
-            <JsonTreeView key={row.i} value={row.orig} signal={signal} defaultDepth={2} rootLabel={`${datasetLabel}[${row.i}]`} onOpenTable={onOpenNested} />
+            <JsonTreeView key={row.i} value={row.orig} signal={signal} defaultDepth={2} rootLabel={rowLabel} onOpenTable={onOpenNested} />
           ) : (
             <div className="p-1.5">
-              <JsonCode text={text} />
+              {tooBig ? (
+                <>
+                  <p className="mb-2 rounded-md bg-warn/10 px-2 py-1.5 text-[12px] text-warn">This record is large ({(text.length / 1024).toFixed(0)} KB). Showing the first 300 KB. Use Copy for the full record.</p>
+                  <pre className="font-mono text-[12px] leading-[1.6] break-words whitespace-pre-wrap">{text.slice(0, 300_000)}</pre>
+                </>
+              ) : (
+                <JsonCode text={text} />
+              )}
             </div>
           )}
         </div>

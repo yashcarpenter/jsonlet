@@ -20,6 +20,7 @@ const GROUPS: { title: string; items: [string[], string][] }[] = [
       [['Shift', 'Click header'], 'Add column to multi-sort'],
       [['Click row'], 'Open row inspector'],
       [['Alt', 'Click cell'], 'Filter column by that value'],
+      [[MOD, 'Click Open as table'], 'Open that table in a new tab'],
       [['Right-click cell'], 'Cell menu (copy, filter, exclude)'],
       [['Drag header edge'], 'Resize column'],
     ],

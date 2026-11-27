@@ -166,7 +166,8 @@ mark.hl {
   outline: none !important;
 }
 .cm-gutters {
-  background: transparent !important;
+  background: var(--c-surface) !important;
+  z-index: 5 !important;
   border-right: 1px solid var(--c-line) !important;
   color: var(--c-muted) !important;
 }

@@ -3,14 +3,15 @@ import CodeMirror from '@uiw/react-codemirror'
 import { json } from '@codemirror/lang-json'
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint'
 import { EditorView } from '@codemirror/view'
+import { EditorState } from '@codemirror/state'
 import { Wrench, ClipboardPaste, Maximize2, Minimize2, Eraser, WandSparkles, Minimize, CheckCircle2, AlertCircle, FileJson } from 'lucide-react'
 import { Button, IconButton, Popover } from './ui'
-import { findJsonError, type JsonError } from '../lib/json'
+import { findJsonError, parseJsonLines, type JsonError } from '../lib/json'
 import { SAMPLES } from '../lib/samples'
 import { repairJson } from '../lib/repair'
 import { cn, copyText, formatBytes, toast } from '../lib/util'
 
-export type Validation = { status: 'empty' | 'valid' | 'invalid'; error?: JsonError; lines: number; bytes: number }
+export type Validation = { status: 'empty' | 'valid' | 'invalid'; error?: JsonError; lines: number; bytes: number; jsonl?: number }
 
 const PLACEHOLDER = `{ "users": [ { "id": 1, "name": "John Doe", "email": "john@example.com", "role": "admin" } ] }`
 
@@ -22,6 +23,7 @@ const jsonLinter = linter(
       JSON.parse(text)
       return []
     } catch {
+      if (parseJsonLines(text)) return []
       const e = findJsonError(text)
       if (!e) return []
       const from = Math.min(e.pos, text.length)
@@ -43,7 +45,10 @@ type Props = {
 }
 
 export function JsonInputEditor({ value, onChange, validation, dark, expanded, onToggleExpand, onLoadSample, fill }: Props) {
-  const extensions = useMemo(() => [json(), jsonLinter, lintGutter(), EditorView.contentAttributes.of({ 'aria-label': 'JSON input' })], [])
+  const extensions = useMemo(
+    () => [json(), jsonLinter, lintGutter(), EditorState.tabSize.of(2), EditorView.contentAttributes.of({ 'aria-label': 'JSON input' })],
+    [],
+  )
 
   const paste = async () => {
     try {
@@ -79,10 +84,10 @@ export function JsonInputEditor({ value, onChange, validation, dark, expanded, o
         <Button size="sm" variant="ghost" onClick={paste}>
           <ClipboardPaste size={13} /> Paste
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => format(2)} disabled={validation.status !== 'valid'} title="Pretty-print JSON">
+        <Button size="sm" variant="ghost" onClick={() => format(2)} disabled={validation.status !== 'valid' || !!validation.jsonl} title="Pretty-print JSON">
           <WandSparkles size={13} /> <span className="hidden sm:inline">Format</span>
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => format(undefined)} disabled={validation.status !== 'valid'} title="Minify JSON">
+        <Button size="sm" variant="ghost" onClick={() => format(undefined)} disabled={validation.status !== 'valid' || !!validation.jsonl} title="Minify JSON">
           <Minimize size={13} /> <span className="hidden sm:inline">Minify</span>
         </Button>
         {validation.status === 'invalid' && (
@@ -156,7 +161,7 @@ export function JsonInputEditor({ value, onChange, validation, dark, expanded, o
         {validation.status === 'empty' && <span className="text-muted">Paste, type or drop JSON to begin.</span>}
         {validation.status === 'valid' && (
           <span className="flex items-center gap-1.5 text-success">
-            <CheckCircle2 size={14} /> Valid JSON
+            <CheckCircle2 size={14} /> {validation.jsonl ? `Valid JSON Lines (${validation.jsonl.toLocaleString()} records)` : 'Valid JSON'}
           </span>
         )}
         {validation.status === 'invalid' && validation.error && (

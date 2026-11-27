@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { CornerDownLeft, History, Lightbulb, SquareTerminal, X } from 'lucide-react'
 import { Button, IconButton, Kbd, Popover } from './ui'
 import { queryJsonPath } from '../lib/jsonpath'
-import { cn } from '../lib/util'
+import { cn, lsGet, lsSet } from '../lib/util'
 
 export type QuerySample = { base: string; arrayRoot: boolean; key: string; numKey?: string; numVal?: number }
 
@@ -11,7 +11,8 @@ type Props = { root: unknown; sample: QuerySample; active: boolean; onRun: (expr
 const HIST = 'jx-query-history'
 const loadHistory = (): string[] => {
   try {
-    return JSON.parse(localStorage.getItem(HIST) || '[]')
+    const v = JSON.parse(lsGet(HIST) || '[]')
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []
   } catch {
     return []
   }
@@ -31,11 +32,7 @@ export function QueryBar({ root, sample, active, onRun, onClear }: Props) {
       setCount(res.length)
       const next = [expr.trim(), ...history.filter((h) => h !== expr.trim())].slice(0, 8)
       setHistory(next)
-      try {
-        localStorage.setItem(HIST, JSON.stringify(next))
-      } catch {
-        /* ignore */
-      }
+      lsSet(HIST, JSON.stringify(next))
       onRun(expr.trim(), data)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Invalid query')

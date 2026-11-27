@@ -1,6 +1,23 @@
 import Papa from 'papaparse'
 import { cellText } from './json'
 
+/* Storage can throw (private mode, disabled cookies, quota), so never touch it directly. */
+export const lsGet = (k: string): string | null => {
+  try {
+    return localStorage.getItem(k)
+  } catch {
+    return null
+  }
+}
+export const lsSet = (k: string, v: string) => {
+  try {
+    localStorage.setItem(k, v)
+  } catch {
+    /* ignore */
+  }
+}
+export const safeName = (s: string) => s.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'data'
+
 export const cn = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 
 /* ---------- toast (tiny pub/sub) ---------- */
@@ -48,7 +65,7 @@ export const toCsv = (keys: string[], rows: Record<string, unknown>[]) =>
       fields: keys,
       data: rows.map((r) => keys.map((k) => (r[k] === undefined ? '' : typeof r[k] === 'object' && r[k] !== null ? JSON.stringify(r[k]) : r[k] === null ? '' : r[k]))),
     },
-    { newline: '\n' },
+    { newline: '\n', escapeFormulae: true },
   )
 
 export const formatBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`)

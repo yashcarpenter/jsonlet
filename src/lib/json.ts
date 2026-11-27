@@ -13,7 +13,8 @@ export function posToLineCol(text: string, pos: number) {
 }
 
 /** Small strict JSON validator that reports a precise position (browser messages are inconsistent). */
-export function findJsonError(s: string): JsonError | null {
+export function findJsonError(input: string): JsonError | null {
+  const s = stripBom(input)
   let i = 0
   const n = s.length
   const fail = (message: string, pos = i): never => {
@@ -117,13 +118,33 @@ export function findJsonError(s: string): JsonError | null {
   }
 }
 
-export type ParseResult = { ok: true; value: unknown } | { ok: false; error: JsonError }
+export type ParseResult = { ok: true; value: unknown; jsonl?: boolean } | { ok: false; error: JsonError }
 
-export function parseJson(text: string): ParseResult {
+export const stripBom = (s: string) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s)
+
+/** NDJSON / JSON Lines: every non-empty line is its own JSON value. Returns null if it isn't. */
+export function parseJsonLines(text: string): unknown[] | null {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '')
+  if (lines.length < 2) return null
+  const out: unknown[] = []
+  for (const l of lines) {
+    try {
+      out.push(JSON.parse(l))
+    } catch {
+      return null
+    }
+  }
+  return out
+}
+
+export function parseJson(raw: string): ParseResult {
+  const text = stripBom(raw)
   if (!text.trim()) return { ok: false, error: { message: 'Nothing to parse. Paste some JSON first.', pos: 0, line: 1, column: 1 } }
   try {
     return { ok: true, value: JSON.parse(text) }
   } catch {
+    const lines = parseJsonLines(text)
+    if (lines) return { ok: true, value: lines, jsonl: true }
     const error = findJsonError(text) ?? { message: 'Invalid JSON', pos: 0, line: 1, column: 1 }
     return { ok: false, error }
   }
@@ -175,14 +196,24 @@ export function describeStructure(root: unknown): string {
   if (isPlainObject(root)) {
     const keys = Object.keys(root)
     if (keys.length === 0) return 'Empty object'
+    if (isKeyedMap(root)) return 'Keyed map of objects'
     return findBestArrayPath(root) ? 'Object with records' : 'Object'
   }
   return `Primitive (${typeOf(root)})`
 }
 
+/** An object whose values are all objects, such as { PAYIN: {...}, PAYOUT: {...} }. */
+export const isKeyedMap = (v: unknown): boolean => {
+  if (!isPlainObject(v)) return false
+  const vals = Object.values(v)
+  return vals.length >= 2 && vals.every(isPlainObject)
+}
+
 /** Look for the largest array of objects reachable through plain objects only. */
 export function findBestArrayPath(root: unknown): (string | number)[] | null {
   if (Array.isArray(root)) return isPlainObject(root[0]) ? [] : null
+  // A keyed map is already a table (one row per key). Don't dive into an arbitrary nested array.
+  if (isKeyedMap(root)) return []
   let best: { path: string[]; len: number } | null = null
   const walk = (v: unknown, path: string[]) => {
     if (path.length > 4 || !isPlainObject(v)) return
@@ -308,8 +339,7 @@ export function buildTable(data: unknown, flattenOn: boolean): TableModel {
     records = data
     origs = data
   } else if (isPlainObject(data)) {
-    const vals = Object.values(data)
-    if (vals.length >= 2 && vals.every(isPlainObject)) {
+    if (isKeyedMap(data)) {
       kind = 'keyed'
       keyCol = true
       records = Object.entries(data).map(([k, v]) => ({ _key: k, ...(v as object) }))
@@ -328,6 +358,8 @@ export function buildTable(data: unknown, flattenOn: boolean): TableModel {
   }
   void keyCol
 
+  const isMatrix = records.length > 0 && records.every((r) => Array.isArray(r) && r.every((x) => x === null || typeof x !== 'object'))
+  if (isMatrix) notes.push('Each row is an array, so columns are named by position: [0], [1], …')
   let primitiveRows = 0
   const colMap = new Map<string, { counts: Partial<Record<JType, number>>; dates: number; strings: number; maxLen: number; present: number }>()
   const flattenedParents = new Set<string>()
@@ -337,7 +369,9 @@ export function buildTable(data: unknown, flattenOn: boolean): TableModel {
     const rec = records[idx]
     const flat: Record<string, unknown> = Object.create(null)
     if (isPlainObject(rec)) {
-      const put = (key: string, v: unknown) => {
+      const put = (raw: string, v: unknown) => {
+        // Empty and prototype-like keys would break column ids, so give them safe display names.
+        const key = raw === '' ? '(empty key)' : raw === '__proto__' ? '[__proto__]' : raw
         let k = key
         let n = 2
         while (k in flat) k = `${key} (${n++})`
@@ -354,6 +388,9 @@ export function buildTable(data: unknown, flattenOn: boolean): TableModel {
         }
       }
       walk(rec, '', 0)
+    } else if (isMatrix) {
+      const arr = rec as unknown[]
+      for (let c = 0; c < arr.length && c < 200; c++) flat[`[${c}]`] = arr[c]
     } else {
       primitiveRows++
       flat['value'] = rec
@@ -428,3 +465,7 @@ export function cellText(v: unknown): string {
   if (typeof v === 'object') return JSON.stringify(v)
   return String(v)
 }
+
+/** A readable path for one row, e.g. $.users[3] or, for keyed maps, $.PAYIN. */
+export const rowRef = (label: string, kind: TableModel['kind'], row: Row): string =>
+  kind === 'keyed' && typeof row.flat['_key'] === 'string' ? `${label}.${row.flat['_key']}` : `${label}[${row.i}]`

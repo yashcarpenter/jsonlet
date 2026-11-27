@@ -15,11 +15,12 @@ type Props = {
   onProcess: () => void
   onSample: () => void
   onLoadSample: (id: string) => void
-  onFile: (f: File) => void
+  onFile: (f: FileList | null) => void
+  onDropText: (t: string) => void
   onBack: () => void
 }
 
-export function EmptyState({ hasData, dirty, text, onChange, validation, dark, processing, onProcess, onSample, onLoadSample, onFile, onBack }: Props) {
+export function EmptyState({ hasData, dirty, text, onChange, validation, dark, processing, onProcess, onSample, onLoadSample, onFile, onDropText, onBack }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [drag, setDrag] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -35,8 +36,8 @@ export function EmptyState({ hasData, dirty, text, onChange, validation, dark, p
       onDrop={(e) => {
         e.preventDefault()
         setDrag(false)
-        const f = e.dataTransfer.files[0]
-        if (f) onFile(f)
+        if (e.dataTransfer.files.length) onFile(e.dataTransfer.files)
+        else onDropText(e.dataTransfer.getData('text/plain'))
       }}
     >
       <div className={cn('mx-auto w-full px-4 pb-10 sm:px-6', expanded ? 'max-w-6xl pt-5' : 'max-w-4xl pt-8 sm:pt-14')}>
@@ -88,18 +89,17 @@ export function EmptyState({ hasData, dirty, text, onChange, validation, dark, p
           <input
             ref={fileRef}
             type="file"
-            accept=".json,application/json,text/plain"
+            accept=".json,.jsonl,.ndjson,application/json,text/plain"
             hidden
             onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) onFile(f)
+              onFile(e.target.files)
               e.target.value = ''
             }}
           />
           <div className="flex flex-col justify-center gap-1 rounded-xl border border-line bg-surface/60 px-4 py-3 text-[12px] text-muted">
             <span className="flex flex-wrap items-center gap-1.5">
               <span className="font-medium text-ink">Supports</span>
-              {['Arrays', 'Objects', 'Nested', '.json'].map((t) => (
+              {['Arrays', 'Objects', 'Nested', '.json', '.jsonl'].map((t) => (
                 <span key={t} className="rounded border border-line bg-sunken px-1.5 py-px font-mono text-[11px]">
                   {t}
                 </span>

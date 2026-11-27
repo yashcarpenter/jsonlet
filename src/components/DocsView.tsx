@@ -22,8 +22,13 @@ export function DocsView() {
           <p>An object whose values are all objects (a keyed map) becomes one row per key, with the key in a <Code>_key</Code> column. Arrays of plain values appear in a single <Code>value</Code> column.</p>
         </Section>
 
+        <Section title="Input formats">
+          <p>Jsonlet accepts standard JSON, JSON Lines / NDJSON (one value per line, each line becomes a record), files with a byte-order mark, and arrays of arrays (columns are named <Code>[0]</Code>, <Code>[1]</Code>, …). If the JSON is invalid, press Repair to fix comments, single quotes, unquoted keys, trailing commas and Python literals.</p>
+          <p>Very wide data (over 200 columns) starts with the first 150 columns visible. Use Columns to show the rest. Integers above 9,007,199,254,740,991 can lose precision because JavaScript numbers cannot hold them exactly.</p>
+        </Section>
+
         <Section title="Nested data">
-          <p>Nested objects are flattened with dot notation, such as <Code>address.city</Code>. You can turn flattening off under Columns. Arrays are never flattened or dropped. They appear as chips you can expand, and any array can be opened as its own table. The breadcrumb above the table takes you back.</p>
+          <p>Nested objects are flattened with dot notation, such as <Code>address.city</Code>. You can turn flattening off under Columns. Arrays are never flattened or dropped. They appear as chips. Click a chip, or the arrow at the start of a row, to expand it in place as a nested table under that row. The row count of the main table never changes, and you can keep expanding inside the nested tables. The double arrow in the header expands or collapses every row on the page. Any nested block can still be opened as its own full table. The breadcrumb above the table takes you back.</p>
           <p>Fields inside arrays in the sidebar use <Code>[*]</Code>, such as <Code>users[*].orders</Code>. That opens every item from every parent as a single table.</p>
         </Section>
 

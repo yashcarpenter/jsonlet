@@ -21,7 +21,7 @@ import { compareValues, filterForValue, isFilterReady, matchesFilter, type Filte
 import { toMarkdown, toTypeScript } from '../lib/convert'
 import { cellText, isPlainObject, rowRef, type Col, type Row, type TableModel } from '../lib/json'
 import { isNestedValue } from './Cells'
-import { copyText, download, lsGet, lsSet, toCsv, toast } from '../lib/util'
+import { cn, copyText, download, lsGet, lsSet, toCsv, toast } from '../lib/util'
 
 export type WorkspaceApi = { copySelected: () => void }
 
@@ -30,16 +30,20 @@ type Props = {
   fileBase: string
   flatten: boolean
   onFlatten: (v: boolean) => void
-  inspectedId: number | null
-  onInspect: (id: number | null) => void
+  isInspected: (row: Row) => boolean
+  /** Called with the clicked row, or null to close the inspector. */
+  onInspect: (row: Row | null) => void
   onOpenNested: (label: string, value: unknown) => void
   datasetLabel: string
-  apiRef: MutableRefObject<WorkspaceApi | null>
+  apiRef?: MutableRefObject<WorkspaceApi | null>
+  /** A smaller version used for tables nested inside another table. Everything else works the same. */
+  compact?: boolean
+  defaultPageSize?: number
 }
 
 const PAGE_SIZES = [10, 25, 50, 100]
 
-export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedId, onInspect, onOpenNested, datasetLabel, apiRef }: Props) {
+export function TableWorkspace({ model, fileBase, flatten, onFlatten, isInspected, onInspect, onOpenNested, datasetLabel, apiRef, compact, defaultPageSize }: Props) {
   const [query, setQuery] = useState('')
   const dq = useDeferredValue(query)
   const [sorting, setSorting] = useState<SortingState>([])
@@ -48,7 +52,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
   const WIDE = model.cols.length > 200
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => (WIDE ? Object.fromEntries(model.cols.slice(150).map((c) => [c.key, false])) : {}))
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 })
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: defaultPageSize ?? 25 })
   const [cell, setCell] = useState<{ rect: DOMRect; value: unknown; colKey: string; row: number } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<{ x: number; y: number; value: unknown; colKey: string; row: number } | null>(null)
@@ -105,6 +109,8 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
     getRowId: (r) => String(r.i),
     columnResizeMode: 'onChange',
     enableMultiSort: true,
+    // Live edits change the data constantly; don't snap back to page 1 each time.
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -138,6 +144,11 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
 
   const filteredRows = table.getPrePaginationRowModel().rows
   const filteredCount = filteredRows.length
+  // If the data shrank (live edit, filter) while on a later page, move back to the last real page.
+  const lastPage = Math.max(0, Math.ceil(filteredCount / pagination.pageSize) - 1)
+  useEffect(() => {
+    if (pagination.pageIndex > lastPage) table.setPageIndex(lastPage)
+  }, [pagination.pageIndex, lastPage, table])
   const selectedIds = Object.keys(rowSelection).filter((k) => rowSelection[k])
   const filterMap: Record<string, FilterValue> = Object.fromEntries(columnFilters.map((f) => [f.id, f.value as FilterValue]))
   const activeFilterCount = columnFilters.filter((f) => colMap.get(f.id) && isFilterReady(f.value as FilterValue, colMap.get(f.id)!.type)).length
@@ -181,10 +192,12 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
   const doTs = () => copyText(toTypeScript(model.rows.map((r) => r.orig)), 'TypeScript interfaces copied')
 
   useEffect(() => {
+    if (!apiRef) return
     apiRef.current = {
       copySelected: () => {
+        const inspected = model.rows.find(isInspected)
         if (selectedIds.length) doCopy(true, false)
-        else if (inspectedId !== null) copyText(JSON.stringify(model.rows[inspectedId]?.orig, null, 2), 'Record copied')
+        else if (inspected) copyText(JSON.stringify(inspected.orig, null, 2), 'Record copied')
         else toast('Select rows or open a record first', 'info')
       },
     }
@@ -212,7 +225,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
   const notes = [...(WIDE ? [`This data has ${model.cols.length.toLocaleString()} columns. To keep the table fast, only the first 150 are shown. Use Columns to show others.`] : []), ...model.notes]
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className={compact ? 'flex min-w-0 flex-col overflow-hidden rounded-md border border-line bg-surface' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>
       <TableToolbar
         query={query}
         onQuery={setQuery}
@@ -222,6 +235,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
         onSetFilter={setFilter}
         density={density}
         onCycleDensity={cycleDensity}
+        compact={compact}
         sorts={sorting}
         onRemoveSort={(id) => setSorting((s) => s.filter((x) => x.id !== id))}
         onClearSorts={() => setSorting([])}
@@ -242,7 +256,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
         exportMenu={{ filteredCount, selectedCount: selectedIds.length, onCsv: doCsv, onJson: doJson, onCopy: doCopy, onMarkdown: doMarkdown, onTypeScript: doTs }}
       />
 
-      {notes.length > 0 && (
+      {notes.length > 0 && !compact && (
         <details className="group border-b border-line bg-accent-soft/40 px-3 py-1 text-[12px] text-muted sm:px-4">
           <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-ink">
             <Table2 size={12} className="text-accent" />
@@ -258,21 +272,21 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
       )}
 
       {allHidden ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-surface p-8 text-center">
+        <div className={cn('flex flex-col items-center justify-center gap-2 bg-surface text-center', compact ? 'p-5' : 'flex-1 p-8')}>
           <Table2 size={28} className="text-muted" />
           <h3 className="text-[14px] font-semibold">All columns are hidden</h3>
           <p className="max-w-sm text-muted">Show at least one column to see the data.</p>
           <Button onClick={() => setColumnVisibility({})}>Show all columns</Button>
         </div>
       ) : noResults ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-surface p-8 text-center">
+        <div className={cn('flex flex-col items-center justify-center gap-2 bg-surface text-center', compact ? 'p-5' : 'flex-1 p-8')}>
           <SearchX size={28} className="text-muted" />
           <h3 className="text-[14px] font-semibold">No records match</h3>
           <p className="max-w-sm text-muted">Nothing in {model.rows.length.toLocaleString()} records matches the current search and filters.</p>
           <Button onClick={clearFilters}>Clear filters</Button>
         </div>
       ) : (
-        <DataTable table={table} cols={colMap} query={dq} inspectedId={inspectedId} onInspect={(id) => onInspect(inspectedId === id ? null : id)} onOpenCell={onOpenCell} onCellMenu={onCellMenu} onCellAlt={(v, k) => filterByValue(v, k, false)}
+        <DataTable table={table} cols={colMap} query={dq} compact={compact} isInspected={isInspected} onInspect={(r) => onInspect(isInspected(r) ? null : r)} onOpenCell={onOpenCell} onCellMenu={onCellMenu} onCellAlt={(v, k) => filterByValue(v, k, false)}
           density={density}
           expanded={expanded}
           nestedKeys={nestedKeys}
@@ -284,7 +298,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
         />
       )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-surface px-3 py-1.5 text-[12px] text-muted sm:px-4">
+      <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-surface py-1.5 text-[12px] text-muted', compact ? 'px-2' : 'px-3 sm:px-4')}>
         <span>
           Showing <b className="font-medium text-ink">{from.toLocaleString()}–{to.toLocaleString()}</b> of <b className="font-medium text-ink">{filteredCount.toLocaleString()}</b>
           {filteredCount !== model.rows.length && <> (filtered from {model.rows.length.toLocaleString()})</>}
@@ -370,7 +384,7 @@ export function TableWorkspace({ model, fileBase, flatten, onFlatten, inspectedI
                 <Item icon={<FilterIcon size={13} />} label="Filter by this value" disabled={!canFilter} onClick={() => filterByValue(m.value, m.colKey, false)} />
                 <Item icon={<FilterX size={13} />} label="Exclude this value" disabled={!canExclude} onClick={() => filterByValue(m.value, m.colKey, true)} />
                 <div className="my-1 h-px bg-line" />
-                <Item icon={<PanelRight size={13} />} label="Open in inspector" onClick={() => onInspect(m.row)} />
+                <Item icon={<PanelRight size={13} />} label="Open in inspector" onClick={() => onInspect(model.rows[m.row] ?? null)} />
                 {isNested && <Item icon={<Table2 size={13} />} label="Open as table  (⌘/Ctrl+click: new tab)" onClick={() => onOpenNested(`${rowLabel(m.row)}.${m.colKey}`, m.value)} />}
                 <div className="px-2.5 pt-1.5 pb-1 text-[10.5px] text-muted">Tip: Alt+click a cell to filter by it.</div>
               </div>

@@ -44,14 +44,14 @@
 }
 
 .dark {
-  --c-bg: #0b1020;
-  --c-surface: #111827;
-  --c-sunken: #172033;
+  --c-bg: #05070d;
+  --c-surface: #0a0e17;
+  --c-sunken: #101624;
   --c-ink: #e5e9f2;
   --c-muted: #94a3b8;
-  --c-line: #232d42;
+  --c-line: #1f2739;
   --c-accent: #818cf8;
-  --c-accent-soft: #1e2347;
+  --c-accent-soft: #151a3a;
   --c-success: #4ade80;
   --c-error: #f87171;
   --c-warn: #fbbf24;
@@ -178,6 +178,25 @@ mark.hl {
 .cm-activeLine,
 .cm-activeLineGutter {
   background: color-mix(in srgb, var(--c-accent) 6%, transparent) !important;
+}
+
+/* Brief highlight when the editor jumps to a key */
+@keyframes flash-bg {
+  from {
+    background-color: color-mix(in srgb, var(--c-accent) 45%, transparent);
+  }
+  to {
+    background-color: color-mix(in srgb, var(--c-accent) 8%, transparent);
+  }
+}
+.cm-flash-line {
+  background-color: color-mix(in srgb, var(--c-accent) 10%, transparent);
+}
+.cm-flash-key {
+  border-radius: 3px;
+  outline: 1.5px solid var(--c-accent);
+  animation: flash-bg 1.6s ease-out;
+  background-color: color-mix(in srgb, var(--c-accent) 14%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

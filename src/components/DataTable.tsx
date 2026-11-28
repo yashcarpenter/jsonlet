@@ -92,8 +92,10 @@ type Props = {
   table: Table<Row>
   cols: Map<string, Col>
   query: string
-  inspectedId: number | null
-  onInspect: (id: number) => void
+  isInspected: (row: Row) => boolean
+  onInspect: (row: Row) => void
+  /** Used for sub-tables nested inside another table: limits the height and lets the page scroll horizontally. */
+  compact?: boolean
   onOpenCell: OpenCell
   onCellMenu: CellMenu
   onCellAlt: (value: unknown, colKey: string) => void
@@ -107,14 +109,14 @@ type Props = {
   rowLabel: (rowIndex: number) => string
 }
 
-export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCell, onCellMenu, onCellAlt, density, expanded, nestedKeys, onToggleCell, onToggleRow, onToggleAll, onOpenTable, rowLabel }: Props) {
+export function DataTable({ table, cols, query, isInspected, onInspect, compact, onOpenCell, onCellMenu, onCellAlt, density, expanded, nestedKeys, onToggleCell, onToggleRow, onToggleAll, onOpenTable, rowLabel }: Props) {
   const q = query.trim()
   const filters = table.getState().columnFilters
   const filterFor = (id: string) => filters.find((f) => f.id === id)?.value as FilterValue | undefined
   const rows = table.getRowModel().rows
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto bg-surface" role="region" aria-label="Data table" tabIndex={-1}>
+    <div className={compact ? 'max-h-[360px] overflow-auto bg-surface' : 'min-h-0 flex-1 overflow-auto bg-surface'} role="region" aria-label="Data table" tabIndex={-1}>
       <table className="border-separate border-spacing-0 text-[12.5px]" style={{ width: table.getTotalSize(), tableLayout: 'fixed' }}>
         <thead>
           {table.getHeaderGroups().map((hg) => (
@@ -162,7 +164,7 @@ export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCe
         </thead>
         <tbody>
           {rows.map((row) => {
-            const inspected = inspectedId === row.original.i
+            const inspected = isInspected(row.original)
             const selected = row.getIsSelected()
             const bg = inspected ? 'bg-accent-soft' : selected ? 'bg-accent-soft/50' : 'bg-surface'
             const ri = row.original.i
@@ -173,8 +175,8 @@ export function DataTable({ table, cols, query, inspectedId, onInspect, onOpenCe
               <tr
                 tabIndex={0}
                 aria-selected={inspected}
-                onClick={() => onInspect(row.original.i)}
-                onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onInspect(row.original.i)}
+                onClick={() => onInspect(row.original)}
+                onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onInspect(row.original)}
                 className="group/row cursor-pointer"
               >
                 {row.getVisibleCells().map((cell) => {

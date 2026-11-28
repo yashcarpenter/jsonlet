@@ -6,7 +6,7 @@ import { cn, lsGet, lsSet } from '../lib/util'
 
 export type QuerySample = { base: string; arrayRoot: boolean; key: string; numKey?: string; numVal?: number }
 
-type Props = { root: unknown; sample: QuerySample; active: boolean; onRun: (expr: string, data: unknown) => void; onClear: () => void }
+type Props = { root: unknown; sample: QuerySample; active: boolean; /** Live number of results; follows edits to the JSON. */ count?: number | null; onRun: (expr: string, data: unknown) => void; onClear: () => void }
 
 const HIST = 'jx-query-history'
 const loadHistory = (): string[] => {
@@ -18,7 +18,7 @@ const loadHistory = (): string[] => {
   }
 }
 
-export function QueryBar({ root, sample, active, onRun, onClear }: Props) {
+export function QueryBar({ root, sample, active, count: liveCount, onRun, onClear }: Props) {
   const [q, setQ] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [count, setCount] = useState<number | null>(null)
@@ -151,9 +151,9 @@ export function QueryBar({ root, sample, active, onRun, onClear }: Props) {
           {err}
         </p>
       )}
-      {!err && active && count !== null && (
+      {!err && active && (liveCount ?? count) !== null && (
         <p className="mt-1 text-[12px] text-muted">
-          <b className="font-medium text-ink">{count.toLocaleString()}</b> result{count === 1 ? '' : 's'} shown below.
+          <b className="font-medium text-ink">{(liveCount ?? count ?? 0).toLocaleString()}</b> result{(liveCount ?? count) === 1 ? '' : 's'} shown below.
         </p>
       )}
     </div>

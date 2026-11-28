@@ -23,9 +23,11 @@ type NodeProps = {
   defaultDepth: number
   onOpenTable?: (label: string, v: unknown) => void
   path: string
+  segs: (string | number)[]
+  onKeyClick?: (segs: (string | number)[]) => void
 }
 
-const Node = memo(function Node({ k, v, depth, signal, defaultDepth, onOpenTable, path }: NodeProps) {
+const Node = memo(function Node({ k, v, depth, signal, defaultDepth, onOpenTable, path, segs, onKeyClick }: NodeProps) {
   const isArr = Array.isArray(v)
   const isObj = isPlainObject(v)
   const branch = isArr || isObj
@@ -44,7 +46,13 @@ const Node = memo(function Node({ k, v, depth, signal, defaultDepth, onOpenTable
   const keyEl: ReactNode =
     k === null ? null : (
       <>
-        <span className={cn(typeof k === 'number' ? 'text-muted' : 'text-tok-key')}>{typeof k === 'number' ? k : `"${k}"`}</span>
+        {onKeyClick ? (
+          <button onClick={() => onKeyClick(segs)} title="Show in the editor" className={cn('rounded hover:bg-accent-soft hover:underline', typeof k === 'number' ? 'text-muted' : 'text-tok-key')}>
+            {typeof k === 'number' ? k : `"${k}"`}
+          </button>
+        ) : (
+          <span className={cn(typeof k === 'number' ? 'text-muted' : 'text-tok-key')}>{typeof k === 'number' ? k : `"${k}"`}</span>
+        )}
         <span className="text-muted">: </span>
       </>
     )
@@ -98,7 +106,7 @@ const Node = memo(function Node({ k, v, depth, signal, defaultDepth, onOpenTable
       {branch && open && count > 0 && (
         <>
           {entries.slice(0, shown).map(([ck, cv]) => (
-            <Node key={ck} k={ck} v={cv} depth={depth + 1} signal={signal} defaultDepth={defaultDepth} onOpenTable={onOpenTable} path={`${path}${typeof ck === 'number' ? `[${ck}]` : `.${ck}`}`} />
+            <Node key={ck} k={ck} v={cv} depth={depth + 1} signal={signal} defaultDepth={defaultDepth} onOpenTable={onOpenTable} path={`${path}${typeof ck === 'number' ? `[${ck}]` : `.${ck}`}`} segs={[...segs, ck]} onKeyClick={onKeyClick} />
           ))}
           {count > shown && (
             <button onClick={() => setShown(shown + CHUNK)} className="ml-8 my-0.5 rounded px-1.5 py-0.5 text-[11px] text-accent hover:bg-accent-soft" style={{ marginLeft: (depth + 1) * 14 + 22 }}>
@@ -114,33 +122,103 @@ const Node = memo(function Node({ k, v, depth, signal, defaultDepth, onOpenTable
   )
 })
 
-export function JsonTreeView({ value, signal, defaultDepth = 1, rootLabel = '$', onOpenTable }: { value: unknown; signal: ExpandSignal; defaultDepth?: number; rootLabel?: string; onOpenTable?: (label: string, v: unknown) => void }) {
+export function JsonTreeView({ value, signal, defaultDepth = 1, rootLabel = '$', onOpenTable, onKeyClick }: { value: unknown; signal: ExpandSignal; defaultDepth?: number; rootLabel?: string; onOpenTable?: (label: string, v: unknown) => void; onKeyClick?: (segs: (string | number)[]) => void }) {
   return (
     <div className="font-mono text-[12px]">
-      <Node k={null} v={value} depth={0} signal={signal} defaultDepth={defaultDepth} onOpenTable={onOpenTable} path={rootLabel} />
+      <Node k={null} v={value} depth={0} signal={signal} defaultDepth={defaultDepth} onOpenTable={onOpenTable} path={rootLabel} segs={[]} onKeyClick={onKeyClick} />
     </div>
   )
 }
 
-/* ---------- Highlighted raw JSON ---------- */
-const TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g
+/* ---------- Highlighted raw JSON (keys are clickable) ---------- */
+type Container = { t: 'o'; key: string } | { t: 'a'; idx: number }
 
-export const JsonCode = memo(function JsonCode({ text }: { text: string }) {
+export const JsonCode = memo(function JsonCode({ text, onKeyClick }: { text: string; onKeyClick?: (segs: (string | number)[]) => void }) {
   const out: ReactNode[] = []
-  let last = 0
-  let m: RegExpExecArray | null
-  TOKEN.lastIndex = 0
-  while ((m = TOKEN.exec(text))) {
-    if (m.index > last) out.push(text.slice(last, m.index))
-    const cls = m[1] ? (m[2] ? 'text-tok-key' : 'text-tok-str') : m[3] ? 'text-tok-bool' : m[0] === 'null' ? 'text-tok-null italic' : 'text-tok-num'
-    out.push(
-      <span key={m.index} className={cls}>
-        {m[1] && m[2] ? m[1] : m[0]}
-      </span>,
-    )
-    if (m[1] && m[2]) out.push(m[2])
-    last = m.index + m[0].length
+  const stack: Container[] = []
+  let plain = ''
+  const flush = () => {
+    if (plain) out.push(plain)
+    plain = ''
   }
-  out.push(text.slice(last))
+  const segsOf = (upTo: number) => stack.slice(0, upTo).map((c) => (c.t === 'o' ? c.key : c.idx))
+  let i = 0
+  const n = text.length
+  while (i < n) {
+    const c = text[i]
+    if (c === '"') {
+      let j = i + 1
+      while (j < n && text[j] !== '"') j += text[j] === '\\' ? 2 : 1
+      const raw = text.slice(i, j + 1)
+      let k = j + 1
+      while (k < n && /\s/.test(text[k])) k++
+      const top = stack[stack.length - 1]
+      if (text[k] === ':' && top?.t === 'o') {
+        let key = raw.slice(1, -1)
+        try {
+          key = JSON.parse(raw) as string
+        } catch {
+          /* keep raw */
+        }
+        top.key = key
+        flush()
+        const segs = segsOf(stack.length)
+        out.push(
+          onKeyClick ? (
+            <button key={i} onClick={() => onKeyClick(segs)} title="Show in the editor" className="rounded text-tok-key hover:bg-accent-soft hover:underline">
+              {raw}
+            </button>
+          ) : (
+            <span key={i} className="text-tok-key">
+              {raw}
+            </span>
+          ),
+        )
+      } else {
+        flush()
+        out.push(
+          <span key={i} className="text-tok-str">
+            {raw}
+          </span>,
+        )
+      }
+      i = j + 1
+      continue
+    }
+    if (c === '{') stack.push({ t: 'o', key: '' })
+    else if (c === '[') stack.push({ t: 'a', idx: 0 })
+    else if (c === '}' || c === ']') stack.pop()
+    else if (c === ',') {
+      const top = stack[stack.length - 1]
+      if (top?.t === 'a') top.idx++
+    } else if (/[-\d]/.test(c)) {
+      const m = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(text.slice(i, i + 40))
+      if (m) {
+        flush()
+        out.push(
+          <span key={i} className="text-tok-num">
+            {m[0]}
+          </span>,
+        )
+        i += m[0].length
+        continue
+      }
+    } else if (c === 't' || c === 'f' || c === 'n') {
+      const m = /^(true|false|null)/.exec(text.slice(i, i + 5))
+      if (m) {
+        flush()
+        out.push(
+          <span key={i} className={m[0] === 'null' ? 'text-tok-null italic' : 'text-tok-bool'}>
+            {m[0]}
+          </span>,
+        )
+        i += m[0].length
+        continue
+      }
+    }
+    plain += c
+    i++
+  }
+  flush()
   return <pre className="font-mono text-[12px] leading-[1.6] break-words whitespace-pre-wrap text-ink">{out}</pre>
 })

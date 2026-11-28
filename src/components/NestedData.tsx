@@ -1,9 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Table2, X } from 'lucide-react'
 import { Cell, isNestedValue, type OpenCell } from './Cells'
 import { IconButton } from './ui'
+import { TableWorkspace } from './TableWorkspace'
+import { NestedContext } from './nestedContext'
 import { buildTable, isPlainObject } from '../lib/json'
-import { cn } from '../lib/util'
+import { safeName } from '../lib/util'
 
 type Common = { onOpenCell: OpenCell; onOpenTable: (label: string, v: unknown) => void }
 type DataProps = Common & { value: unknown; label: string }
@@ -103,96 +105,60 @@ function useOpenSet() {
   return { open, toggle }
 }
 
-function NestedTable({ value, label, onOpenCell, onOpenTable }: DataProps) {
-  const model = useMemo(() => buildTable(value, true), [value])
-  const { open, toggle } = useOpenSet()
-  const [shown, setShown] = useState(50)
-  const colCount = model.cols.length + 1
-
+/**
+ * A table nested inside another table's row. It is the SAME table component as the main one (sorting, filters,
+ * search, column controls, paging, export, further nesting, record inspector), just in a compact form.
+ */
+function NestedTable({ value, label, onOpenTable }: DataProps) {
+  const ctx = useContext(NestedContext)
+  const [flatten, setFlatten] = useState(true)
+  const model = useMemo(() => buildTable(value, flatten), [value, flatten])
   return (
-    <div className="w-max min-w-full rounded-md border border-line bg-surface">
-      <table className="border-separate border-spacing-0 text-[12px]" style={{ minWidth: '100%' }}>
-        <thead>
-          <tr>
-            <th className="h-7 w-10 border-r border-b border-line bg-sunken px-2 text-center font-mono text-[11px] font-normal text-muted">#</th>
-            {model.cols.map((c) => (
-              <th key={c.key} className={cn('h-7 border-r border-b border-line bg-sunken px-2 font-mono text-[11.5px] font-semibold whitespace-nowrap', c.type === 'number' ? 'text-right' : 'text-left')}>
-                {c.key}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {model.rows.slice(0, shown).map((r) => {
-            const openKeys = model.cols.filter((c) => open.has(`${r.i}::${c.key}`) && isNestedValue(r.flat[c.key]))
-            return (
-              <FragmentRows key={r.i}>
-                <tr className="hover:bg-sunken">
-                  <td className="h-7 border-r border-b border-line px-2 text-center font-mono text-[11px] text-muted">{r.i + 1}</td>
-                  {model.cols.map((c) => {
-                    const v = r.flat[c.key]
-                    const k = `${r.i}::${c.key}`
-                    return (
-                      <td key={c.key} data-col={c.key} className={cn('h-7 max-w-[320px] overflow-hidden border-r border-b border-line px-2 whitespace-nowrap', c.type === 'number' && 'text-right')}>
-                        <Cell value={v} q="" onOpen={onOpenCell} colKey={c.key} rowIndex={r.i} expanded={open.has(k)} onToggle={isNestedValue(v) ? () => toggle(k) : undefined} />
-                      </td>
-                    )
-                  })}
-                </tr>
-                {openKeys.length > 0 && (
-                  <tr>
-                    <td colSpan={colCount} className="border-b border-line bg-sunken/50 p-0">
-                      <div className="space-y-2 py-2">
-                        {openKeys.map((c) => (
-                          <Anchored key={c.key} colKey={c.key}>
-                            <NestedSection title={c.key} value={r.flat[c.key]} label={`${label}[${r.i}].${c.key}`} onClose={() => toggle(`${r.i}::${c.key}`)} onOpenCell={onOpenCell} onOpenTable={onOpenTable} />
-                          </Anchored>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </FragmentRows>
-            )
-          })}
-        </tbody>
-      </table>
-      {model.rows.length > shown && (
-        <button onClick={() => setShown((n) => n + 100)} className="w-full border-t border-line py-1.5 text-[12px] text-accent hover:bg-accent-soft">
-          Show {Math.min(100, model.rows.length - shown)} more ({(model.rows.length - shown).toLocaleString()} remaining)
-        </button>
-      )}
-    </div>
+    <TableWorkspace
+      key={flatten ? 'flat' : 'raw'}
+      compact
+      defaultPageSize={10}
+      model={model}
+      fileBase={`${ctx?.fileBase ?? 'data'}-${safeName(label)}`}
+      flatten={flatten}
+      onFlatten={setFlatten}
+      isInspected={(r) => !!ctx && ctx.isInspected(r, model.kind)}
+      onInspect={(r) => ctx?.onInspectRow(r, model.kind)}
+      onOpenNested={onOpenTable}
+      datasetLabel={label}
+    />
   )
 }
 
-function FragmentRows({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
-}
-
 function NestedObject({ value, label, onOpenCell, onOpenTable }: DataProps) {
-  const model = useMemo(() => buildTable(value, true), [value])
+  const ctx = useContext(NestedContext)
   const { open, toggle } = useOpenSet()
-  const flat = model.rows[0]?.flat ?? {}
+  const obj = value as Record<string, unknown>
   return (
     <dl className="w-max min-w-[320px] rounded-md border border-line bg-surface text-[12px]">
-      {model.cols.map((c) => {
-        const v = flat[c.key]
+      {Object.keys(obj).map((k) => {
+        const v = obj[k]
         const nested = isNestedValue(v)
         return (
-          <div key={c.key} className="border-b border-line last:border-b-0">
+          <div key={k} className="border-b border-line last:border-b-0">
             <div className="grid grid-cols-[minmax(80px,200px)_1fr] items-center gap-2 px-2 py-1">
-              <dt className="truncate font-mono text-[11.5px] text-muted" title={c.key}>
-                {c.key}
+              <dt className="truncate" title={ctx ? `${k} (click to show in the editor)` : k}>
+                {ctx ? (
+                  <button onClick={() => ctx.revealKey(value, k)} className="max-w-full truncate rounded font-mono text-[11.5px] text-muted hover:bg-accent-soft hover:text-accent hover:underline">
+                    {k}
+                  </button>
+                ) : (
+                  <span className="font-mono text-[11.5px] text-muted">{k}</span>
+                )}
               </dt>
-              <dd data-col={c.key} className="min-w-0 overflow-hidden">
-                <Cell value={v} q="" onOpen={onOpenCell} colKey={c.key} rowIndex={0} expanded={open.has(c.key)} onToggle={nested ? () => toggle(c.key) : undefined} />
+              <dd data-col={k} className="min-w-0 overflow-hidden">
+                <Cell value={v} q="" onOpen={onOpenCell} colKey={k} rowIndex={0} expanded={open.has(k)} onToggle={nested ? () => toggle(k) : undefined} />
               </dd>
             </div>
-            {nested && open.has(c.key) && (
+            {nested && open.has(k) && (
               <div className="py-2">
-                <Anchored colKey={c.key}>
-                  <NestedSection title={c.key} value={v} label={`${label}.${c.key}`} onClose={() => toggle(c.key)} onOpenCell={onOpenCell} onOpenTable={onOpenTable} />
+                <Anchored colKey={k}>
+                  <NestedSection title={k} value={v} label={`${label}.${k}`} onClose={() => toggle(k)} onOpenCell={onOpenCell} onOpenTable={onOpenTable} />
                 </Anchored>
               </div>
             )}

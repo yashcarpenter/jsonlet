@@ -14,6 +14,11 @@ type Props = {
   onNext: (() => void) | null
   onOpenNested: (label: string, v: unknown) => void
   rowLabel: string
+  onKeyClick: (segs: (string | number)[]) => void
+  /** Overrides the default "Record #n" heading. */
+  title?: string
+  /** The position line says "in view" for the main table (filtered/sorted). Turn off for document-order siblings. */
+  inView?: boolean
 }
 
 const idHint = (orig: unknown): string | null => {
@@ -25,8 +30,8 @@ const idHint = (orig: unknown): string | null => {
   return null
 }
 
-export function RowInspector({ row, position, total, onClose, onPrev, onNext, onOpenNested, rowLabel }: Props) {
-  const [mode, setMode] = useState<'tree' | 'json'>('tree')
+export function RowInspector({ row, position, total, onClose, onPrev, onNext, onOpenNested, rowLabel, onKeyClick, title, inView = true }: Props) {
+  const [mode, setMode] = useState<'tree' | 'json'>('json')
   const [signal, setSignal] = useState<ExpandSignal>({ n: 0, mode: null })
   const hint = idHint(row.orig)
   const text = JSON.stringify(row.orig, null, 2) ?? ''
@@ -38,8 +43,8 @@ export function RowInspector({ row, position, total, onClose, onPrev, onNext, on
       <aside className="anim-right fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-line bg-surface shadow-2xl sm:w-[420px] lg:static lg:z-auto lg:w-[400px] lg:shrink-0 lg:shadow-none" aria-label="Row inspector">
         <div className="flex items-center gap-2 border-b border-line px-3 py-2">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-[13px] font-semibold">Record #{row.i + 1}</h2>
-            <p className="truncate font-mono text-[11px] text-muted">{hint ?? `${position} of ${total.toLocaleString()} in view`}</p>
+            <h2 className="truncate text-[13px] font-semibold">{title ?? `Record #${row.i + 1}`}</h2>
+            <p className="truncate font-mono text-[11px] text-muted">{hint ?? `${position} of ${total.toLocaleString()}${inView ? ' in view' : ''}`}</p>
           </div>
           <IconButton label="Previous record" onClick={onPrev ?? undefined} disabled={!onPrev}>
             <ChevronUp size={15} />
@@ -52,7 +57,7 @@ export function RowInspector({ row, position, total, onClose, onPrev, onNext, on
           </IconButton>
         </div>
         <div className="flex items-center gap-1 border-b border-line px-3 py-1.5">
-          <Segmented value={mode} onChange={setMode} options={[{ id: 'tree', label: 'Tree' }, { id: 'json', label: 'JSON' }]} />
+          <Segmented value={mode} onChange={setMode} options={[{ id: 'json', label: 'JSON' }, { id: 'tree', label: 'Tree' }]} />
           <div className="ml-auto flex items-center gap-0.5">
             {mode === 'tree' && (
               <>
@@ -71,7 +76,7 @@ export function RowInspector({ row, position, total, onClose, onPrev, onNext, on
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-2">
           {mode === 'tree' ? (
-            <JsonTreeView key={row.i} value={row.orig} signal={signal} defaultDepth={2} rootLabel={rowLabel} onOpenTable={onOpenNested} />
+            <JsonTreeView key={rowLabel} value={row.orig} signal={signal} defaultDepth={2} rootLabel={rowLabel} onOpenTable={onOpenNested} onKeyClick={onKeyClick} />
           ) : (
             <div className="p-1.5">
               {tooBig ? (
@@ -80,12 +85,12 @@ export function RowInspector({ row, position, total, onClose, onPrev, onNext, on
                   <pre className="font-mono text-[12px] leading-[1.6] break-words whitespace-pre-wrap">{text.slice(0, 300_000)}</pre>
                 </>
               ) : (
-                <JsonCode text={text} />
+                <JsonCode text={text} onKeyClick={onKeyClick} />
               )}
             </div>
           )}
         </div>
-        <p className="border-t border-line px-3 py-1.5 text-[11px] text-muted">Hover a value to copy it. Arrays can be opened as their own table.</p>
+        <p className="border-t border-line px-3 py-1.5 text-[11px] text-muted">Click a key to jump to it in the editor. Hover a value to copy it.</p>
       </aside>
     </>
   )

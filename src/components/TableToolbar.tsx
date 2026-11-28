@@ -23,6 +23,7 @@ type Props = {
   onClearFilters: () => void
   density: Density
   onCycleDensity: () => void
+  compact?: boolean
   columnManager: ComponentProps<typeof ColumnManager>
   exportMenu: ComponentProps<typeof ExportMenu>
 }
@@ -96,9 +97,9 @@ export function TableToolbar(p: Props) {
   const total = active.length + (p.query ? 1 : 0)
 
   return (
-    <div className="border-b border-line bg-surface px-3 py-2 sm:px-4">
+    <div className={p.compact ? 'border-b border-line bg-surface px-2 py-1.5' : 'border-b border-line bg-surface px-3 py-2 sm:px-4'}>
       <div className="flex flex-wrap items-center gap-2">
-        <GlobalSearch value={p.query} onChange={p.onQuery} matches={p.matches} />
+        <GlobalSearch value={p.query} onChange={p.onQuery} matches={p.matches} compact={p.compact} />
         <FilterMenu cols={p.cols} filters={p.filters} onSetFilter={p.onSetFilter} />
         <ColumnManager {...p.columnManager} />
         {total > 0 && (
@@ -107,9 +108,11 @@ export function TableToolbar(p: Props) {
           </Button>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <IconButton label={`Row density: ${p.density} (click to change)`} onClick={p.onCycleDensity}>
-            <Rows3 size={15} />
-          </IconButton>
+          {!p.compact && (
+            <IconButton label={`Row density: ${p.density} (click to change)`} onClick={p.onCycleDensity}>
+              <Rows3 size={15} />
+            </IconButton>
+          )}
           <ExportMenu {...p.exportMenu} />
         </div>
       </div>

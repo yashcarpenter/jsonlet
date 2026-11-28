@@ -53,7 +53,7 @@ export function EmptyState({ hasData, dirty, text, onChange, validation, dark, p
         <JsonInputEditor value={text} onChange={onChange} validation={validation} dark={dark} expanded={expanded} onToggleExpand={() => setExpanded((e) => !e)} onLoadSample={onLoadSample} />
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button variant="primary" onClick={onProcess} disabled={processing || validation.status === 'empty'} className="h-9 px-4">
+          <Button variant="primary" onClick={onProcess} disabled={processing || !text.trim()} className="h-9 px-4">
             {processing ? <Loader2 size={15} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
             {processing ? 'Processing…' : hasData ? 'Update table' : 'Explore JSON'}
             <span className="ml-1 hidden items-center gap-0.5 sm:inline-flex">

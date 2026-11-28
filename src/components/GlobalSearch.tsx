@@ -2,14 +2,14 @@ import { Search, X } from 'lucide-react'
 import { Kbd } from './ui'
 import { MOD } from '../lib/util'
 
-type Props = { value: string; onChange: (v: string) => void; matches: number | null }
+type Props = { value: string; onChange: (v: string) => void; matches: number | null; compact?: boolean }
 
-export function GlobalSearch({ value, onChange, matches }: Props) {
+export function GlobalSearch({ value, onChange, matches, compact }: Props) {
   return (
-    <label className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-muted transition-colors focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15 sm:w-72">
+    <label className={"flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-muted transition-colors focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15 " + (compact ? 'sm:w-44' : 'sm:w-72')}>
       <Search size={14} className="shrink-0" />
       <input
-        id="global-search"
+        id={compact ? undefined : 'global-search'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -32,7 +32,7 @@ export function GlobalSearch({ value, onChange, matches }: Props) {
           </button>
         </>
       ) : (
-        <span className="hidden items-center gap-0.5 sm:flex">
+        <span className={compact ? 'hidden' : 'hidden items-center gap-0.5 sm:flex'}>
           <Kbd>{MOD}</Kbd>
           <Kbd>K</Kbd>
         </span>

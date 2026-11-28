@@ -60,7 +60,8 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
         <p>
           <span className="font-medium text-ink">Jsonlet</span> turns raw JSON into an interactive table you can search, filter, sort, inspect and export.
         </p>
-        <p>Everything runs in your browser. There is no backend, no account and no network request: your data never leaves this tab.</p>
+        <p>Everything runs in your browser. There is no backend, no account and no network request: your data never leaves this browser.</p>
+        <p>A draft is kept in this browser so a reload doesn't lose your work. Clear Data removes it.</p>
         <p>Built with React, TypeScript, Vite, Tailwind CSS, TanStack Table, CodeMirror and PapaParse.</p>
       </div>
     </Modal>
